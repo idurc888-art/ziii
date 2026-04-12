@@ -1,4 +1,4 @@
-/* REGRA 5 — Safe Zone e tokens tipográficos TV */
+/* Tokens tipográficos TV */
 :root {
   --pink:       #e91e8c;
   --pink-glow:  rgba(233, 30, 140, 0.45);
@@ -8,7 +8,6 @@
   --text:       #ffffff;
   --text-muted: #888;
 
-  /* REGRA 3 — tipografia mínima TV */
   --tv-heading: 32px;
   --tv-body:    26px;
   --tv-meta:    20px;
@@ -23,8 +22,6 @@
   flex-direction: column;
   overflow: hidden;
   font-family: 'Outfit', sans-serif;
-  /* REGRA 5 — safe zone 5% vertical, conteúdo não chega nas bordas */
-  padding: 0;
 }
 
 /* Hero */
@@ -32,12 +29,12 @@
   display: flex;
   align-items: center;
   gap: 24px;
-  padding: 36px 80px 16px;  /* 80px = ~4% em 1920 (safe zone) */
+  padding: 36px 80px 16px;
   flex-shrink: 0;
 }
 
 .logo {
-  font-size: 52px;  /* --tv-text-hero */
+  font-size: 52px;
   font-weight: 900;
   letter-spacing: -2px;
   color: var(--text);
@@ -45,7 +42,7 @@
 .logoAccent { color: var(--pink); }
 
 .heroSub {
-  font-size: var(--tv-meta);  /* 20px */
+  font-size: var(--tv-meta);
   color: var(--text-muted);
   font-weight: 400;
   flex: 1;
@@ -63,13 +60,15 @@
 }
 .settingsBtn:hover { opacity: 1; }
 
-/* Rows container */
+/* Rows container
+   CORREÇÃO: sem scroll-behavior smooth — trava CPU no Tizen
+   Scroll instantâneo via scrollIntoView com behavior: instant no JS */
 .rows {
   flex: 1;
   overflow-y: auto;
   padding: 8px 0 56px;
   scrollbar-width: none;
-  scroll-behavior: smooth;
+  /* SEM scroll-behavior: smooth — causa travamento no Tizen */
 }
 .rows::-webkit-scrollbar { display: none; }
 
@@ -82,10 +81,10 @@
 .row:not(.rowActive) { opacity: 0.4; }
 
 .rowTitle {
-  font-size: var(--tv-heading);  /* 32px */
+  font-size: var(--tv-heading);
   font-weight: 700;
   color: var(--text-muted);
-  padding: 16px 80px 12px;  /* safe zone */
+  padding: 16px 80px 12px;
   margin: 0;
   display: flex;
   align-items: center;
@@ -95,78 +94,63 @@
 .rowTitleActive { color: var(--text); }
 
 .rowCounter {
-  font-size: var(--tv-min);  /* 18px */
+  font-size: var(--tv-min);
   font-weight: 400;
   color: var(--text-muted);
   opacity: 0.6;
 }
 
 /*
-  CONVEYOR BELT — CONCEITO CORRETO
-  O "quadro rosa" (foco) fica FIXO na posição inicial (safe zone 80px)
-  Os cards deslizam para a ESQUERDA conforme navegamos para a DIREITA
-  O card focado SEMPRE aparece na mesma posição visual (80px da esquerda)
+  CONVEYOR BELT
+  O card focado fica FIXO em 80px da esquerda.
+  A faixa (.cards) desliza com translateX.
+  overflow: hidden no .cardsWindow esconde o resto.
 */
 .cardsWindow {
   overflow: hidden;
-  padding: 16px 0 24px;  /* espaço vertical para scale do card focado */
-  padding-left: 80px;    /* safe zone = área fixa onde o card focado aparece */
+  padding: 16px 0 24px;
+  padding-left: 80px;
   position: relative;
 }
 
 .cards {
   display: flex;
   gap: 16px;
-  /* Transição suave mas não muito lenta */
-  transition: transform 280ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  /* GPU: apenas transform — não força reflow */
+  transition: transform 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
   will-change: transform;
 }
 
-/*
-  REGRA 5 — cardWrapper: container relativo para posicionar número Top10
-  O número fica FORA do .card, posicionado absolutamente à esquerda
-*/
+/* cardWrapper: container para o número Top10 externo */
 .cardWrapper {
   position: relative;
   flex-shrink: 0;
-  /* A largura do wrapper inclui espaço para o número à esquerda */
-  /* Para os primeiros 10 canais o número "invade" o espaço à esquerda */
 }
 
-/*
-  Número Top 10 — externo ao card, lado esquerdo
-  Fica sobreposto ao lado esquerdo do card, alinhado verticalmente ao centro
-  Tamanho grande (120px) — estilo Netflix/Disney+
-*/
+/* Número Top10 — estilo Netflix, fora do card */
 .rankNum {
   position: absolute;
-  left: -56px;       /* puxa para fora do card pela metade */
+  left: -56px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 120px;
   font-weight: 900;
   font-family: 'Barlow Condensed', 'Outfit', sans-serif;
   line-height: 1;
-  /* Stroke: número vazado com borda — padrão Netflix */
   color: transparent;
   -webkit-text-stroke: 2.5px rgba(255,255,255,0.25);
   text-stroke: 2.5px rgba(255,255,255,0.25);
   pointer-events: none;
   user-select: none;
-  transition:
-    -webkit-text-stroke-color 200ms ease,
-    color 200ms ease;
+  transition: -webkit-text-stroke-color 200ms ease;
   z-index: 5;
 }
-
-/* Número fica colorido quando o card está focado */
 .rankNumFocused {
   -webkit-text-stroke-color: var(--pink);
-  text-stroke-color: var(--pink);
   filter: drop-shadow(0 0 12px var(--pink-glow));
 }
 
-/* REGRA 6 — Card com todos os 5 estados visuais */
+/* Card — 5 estados visuais */
 .card {
   flex-shrink: 0;
   width: 220px;
@@ -179,20 +163,19 @@
   background: var(--surface);
   border: 1.5px solid rgba(255,255,255,0.06);
   box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  /* Só transition nas props que mudam — evita recalcular tudo */
   transition:
     transform 160ms ease-out,
-    opacity 180ms ease-out,
-    box-shadow 160ms ease-out,
     border-color 180ms ease-out,
-    background 180ms ease-out;
+    box-shadow 160ms ease-out;
   will-change: transform;
   cursor: pointer;
   position: relative;
-  opacity: 0.7;  /* idle */
+  opacity: 0.75;
   transform-origin: center center;
 }
 
-/* ESTADO: Focused (REGRA 2 — foco SEMPRE visível) */
+/* Focused */
 .cardFocused {
   transform: scale(1.06) translateY(-5px);
   opacity: 1;
@@ -206,13 +189,17 @@
     inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
-/* ESTADO: Pressed — feedback instantâneo ao OK */
+/* Pressed */
 .cardPressed {
   transform: scale(0.96) translateY(-2px) !important;
   transition-duration: 80ms !important;
 }
 
-/* Card image area */
+/* CORREÇÃO: removido .cardNeighbor com scale()
+   Aplicar transform em todos os cards não-focados (80+) causa
+   layout thrash constante na CPU fraca do Tizen */
+
+/* Card image */
 .cardImg {
   width: 196px;
   height: 120px;
@@ -238,7 +225,8 @@
   text-transform: uppercase;
 }
 
-/* Glow overlay no card focado */
+/* CORREÇÃO: glowPulse só existe quando card está focado
+   Animação infinita em todos os cards consumia GPU desnecessariamente */
 .cardGlow {
   position: absolute;
   inset: 0;
@@ -246,6 +234,9 @@
   background: radial-gradient(ellipse at center, var(--pink-glow) 0%, transparent 70%);
   pointer-events: none;
   opacity: 0.35;
+  /* Animação só acontece no card focado (via .cardFocused .cardGlow) */
+}
+.cardFocused .cardGlow {
   animation: glowPulse 2s ease-in-out infinite;
 }
 @keyframes glowPulse {
@@ -255,7 +246,7 @@
 
 /* Card name */
 .cardName {
-  font-size: var(--tv-min);  /* 18px — mínimo absoluto TV */
+  font-size: var(--tv-min);
   font-weight: 600;
   color: var(--text-muted);
   text-align: center;
@@ -267,18 +258,12 @@
 }
 .cardFocused .cardName { color: var(--text); }
 
-/* Vizinhos se afastam levemente */
-.cardNeighbor {
-  transform: scale(0.96);
-  opacity: 0.5;
-}
-
-/* Empty state — REGRA 2: mostrar algo útil */
+/* Empty state */
 .empty {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
-  font-size: var(--tv-body);  /* 26px */
+  font-size: var(--tv-body);
   color: var(--text-muted);
 }

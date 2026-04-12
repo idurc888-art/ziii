@@ -8,7 +8,7 @@ interface Props {
   onSettings?: () => void
 }
 
-// REGRA 1 — Mapa COMPLETO de keyCodes Samsung Tizen
+// Mapa completo de keyCodes Samsung Tizen
 const KEYS = {
   UP:         38,
   DOWN:       40,
@@ -17,25 +17,18 @@ const KEYS = {
   ENTER:      13,
   BACK:       10009,
   EXIT:       10182,
-  PLAY:       415,
-  PAUSE:      19,
-  PLAY_PAUSE: 10252,
-  FF:         417,
-  RW:         412,
-  STOP:       413,
   CH_UP:      427,
   CH_DOWN:    428,
-  RED:        403,
-  GREEN:      404,
-  YELLOW:     405,
-  BLUE:       406,
 }
 
 // Conveyor belt
-const CARD_W    = 220
-const CARD_GAP  = 16
-const RAIL_START = 48
-const STEP = CARD_W + CARD_GAP  // 236px
+const CARD_W     = 220
+const CARD_GAP   = 16
+const STEP       = CARD_W + CARD_GAP  // 236px
+
+// Throttle: 200ms — confiável no Tizen (e.repeat NÃO é confiável na TV)
+// Segurar o botão: ~5 cards/s — lento o suficiente para controlar
+const THROTTLE_MS = 200
 
 const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
   const groups            = useChannelsStore(s => s.groups)
@@ -44,69 +37,104 @@ const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
 
   const [catIdx, setCatIdx] = useState(0)
   const [chIdx,  setChIdx]  = useState(0)
-
-  // REGRA 2 — foco nunca some: pressed state para feedback tátil
   const [pressed, setPressed] = useState(false)
 
+  // PADRÃO TIZEN — useRef para valores de navegação dentro do listener
+  // Evita recriar o useCallback (e o listener) a cada tecla pressionada
+  const catIdxRef   = useRef(0)
+  const chIdxRef    = useRef(0)
+  const catsRef     = useRef<string[]>([])
+  const groupsRef   = useRef<Record<string, Channel[]>>({})
   const rowMemory   = useRef<Record<number, number>>({})
   const rowElemRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const lastKeyMs   = useRef(0)  // throttle via Date.now() — confiável no Tizen
 
-  const currentCat = cats[catIdx] || ''
-  const channels   = (groups[currentCat] || []).slice(0, 80)
+  // Sincroniza refs com state — sem recriar listener
+  useEffect(() => { catIdxRef.current = catIdx }, [catIdx])
+  useEffect(() => { chIdxRef.current  = chIdx  }, [chIdx])
+  useEffect(() => { catsRef.current   = cats   }, [cats])
+  useEffect(() => { groupsRef.current = groups }, [groups])
 
-  // Scroll vertical da row ativa
+  // Scroll vertical para a row ativa — INSTANT (smooth trava CPU no Tizen)
   const scrollToRow = useCallback((ci: number) => {
-    rowElemRefs.current[ci]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    rowElemRefs.current[ci]?.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'nearest' })
   }, [])
 
   useEffect(() => { scrollToRow(catIdx) }, [catIdx, scrollToRow])
 
+  // PADRÃO TIZEN — useCallback com [] fixo: listener NUNCA é recriado
+  // Todos os valores lidos via ref, não via closure
   const onKey = useCallback((e: KeyboardEvent) => {
     const k = e.keyCode
 
-    // BACK e EXIT são gerenciados pelo App.tsx
+    // Back/Exit gerenciados pelo App.tsx
     if (k === KEYS.BACK || k === KEYS.EXIT) return
 
-    // Só navegação e enter
-    if (![KEYS.UP, KEYS.DOWN, KEYS.LEFT, KEYS.RIGHT, KEYS.ENTER,
-           KEYS.CH_UP, KEYS.CH_DOWN].includes(k)) return
+    // Só teclas de navegação
+    if (![KEYS.UP, KEYS.DOWN, KEYS.LEFT, KEYS.RIGHT,
+          KEYS.ENTER, KEYS.CH_UP, KEYS.CH_DOWN].includes(k)) return
 
     e.preventDefault()
 
-    const chs = (groups[cats[catIdx]] || []).slice(0, 80)
+    // Throttle via Date.now() — e.repeat NÃO funciona no Tizen
+    const now = Date.now()
+    if (now - lastKeyMs.current < THROTTLE_MS) return
+    lastKeyMs.current = now
+
+    const ci   = catIdxRef.current
+    const chi  = chIdxRef.current
+    const cats = catsRef.current
+    const grps = groupsRef.current
+    const chs  = (grps[cats[ci]] || []).slice(0, 80)
 
     if (k === KEYS.DOWN || k === KEYS.CH_DOWN) {
-      const next = Math.min(catIdx + 1, cats.length - 1)
-      rowMemory.current[catIdx] = chIdx
+      const next = Math.min(ci + 1, cats.length - 1)
+      if (next === ci) return
+      rowMemory.current[ci] = chi
       setCatIdx(next)
       setChIdx(rowMemory.current[next] ?? 0)
 
     } else if (k === KEYS.UP || k === KEYS.CH_UP) {
-      const next = Math.max(catIdx - 1, 0)
-      rowMemory.current[catIdx] = chIdx
+      const next = Math.max(ci - 1, 0)
+      if (next === ci) return
+      rowMemory.current[ci] = chi
       setCatIdx(next)
       setChIdx(rowMemory.current[next] ?? 0)
 
     } else if (k === KEYS.RIGHT) {
-      setChIdx(prev => Math.min(prev + 1, chs.length - 1))
+      const next = Math.min(chi + 1, chs.length - 1)
+      if (next === chi) return
+      rowMemory.current[ci] = next
+      setChIdx(next)
 
     } else if (k === KEYS.LEFT) {
-      setChIdx(prev => Math.max(prev - 1, 0))
+      const next = Math.max(chi - 1, 0)
+      if (next === chi) return
+      rowMemory.current[ci] = next
+      setChIdx(next)
 
-    } else if (k === KEYS.ENTER && chs[chIdx]) {
+    } else if (k === KEYS.ENTER && chs[chi]) {
       setPressed(true)
       setTimeout(() => {
         setPressed(false)
-        setCurrentChannel(chs[chIdx])
-        onPlay(chs[chIdx])
+        setCurrentChannel(chs[chi])
+        onPlay(chs[chi])
       }, 80)
     }
-  }, [catIdx, chIdx, cats, groups, onPlay, setCurrentChannel])
+  }, [])  // [] — nunca recria o listener
 
+  // PADRÃO TIZEN — document em vez de window
+  // Tizen coloca foco no document; window pode não receber em alguns modelos
   useEffect(() => {
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
   }, [onKey])
+
+  // Atualiza setCurrentChannel e onPlay via ref para não recriar onKey
+  const onPlayRef           = useRef(onPlay)
+  const setCurrentChannelRef = useRef(setCurrentChannel)
+  useEffect(() => { onPlayRef.current = onPlay }, [onPlay])
+  useEffect(() => { setCurrentChannelRef.current = setCurrentChannel }, [setCurrentChannel])
 
   if (cats.length === 0) return (
     <div className={styles.root}>
@@ -121,7 +149,7 @@ const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
       {/* Hero */}
       <div className={styles.hero}>
         <span className={styles.logo}>ziii<span className={styles.logoAccent}>TV</span></span>
-        <span className={styles.heroSub}>{channels.length} canais · {cats.length} categorias</span>
+        <span className={styles.heroSub}>{(groups[cats[catIdx]] || []).length} canais · {cats.length} categorias</span>
         {onSettings && (
           <button className={styles.settingsBtn} onClick={onSettings}>⚙️</button>
         )}
@@ -132,8 +160,7 @@ const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
         {cats.map((cat, ci) => {
           const chs         = (groups[cat] || []).slice(0, 80)
           const isActiveRow = ci === catIdx
-          // translateX conveyor belt
-          const offset = isActiveRow ? chIdx * STEP : 0
+          const offset      = isActiveRow ? chIdx * STEP : 0
 
           return (
             <div
@@ -156,14 +183,10 @@ const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
                 >
                   {chs.map((ch, idx) => {
                     const focused  = isActiveRow && idx === chIdx
-                    const neighbor = isActiveRow && !focused
-                    // Top 10: só mostra para os primeiros 10 canais
                     const rankNum  = idx < 10 ? idx + 1 : null
 
                     return (
-                      // REGRA 5 — wrapper relativo para o número ficar externo ao card
                       <div key={ch.url} className={styles.cardWrapper}>
-                        {/* Número Top10 — FORA do card, à esquerda, superposto */}
                         {rankNum !== null && (
                           <span className={
                             `${styles.rankNum}` +
@@ -176,9 +199,8 @@ const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
                         <div
                           className={
                             `${styles.card}` +
-                            (focused  ? ` ${styles.cardFocused}`  : '') +
-                            (focused && pressed ? ` ${styles.cardPressed}` : '') +
-                            (neighbor ? ` ${styles.cardNeighbor}` : '')
+                            (focused ? ` ${styles.cardFocused}` : '') +
+                            (focused && pressed ? ` ${styles.cardPressed}` : '')
                           }
                           onClick={() => {
                             setCurrentChannel(ch)

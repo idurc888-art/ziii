@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import HomeScreen from '../screens/HomeScreen/HomeScreen'
 import PlayerScreen from '../screens/PlayerScreen/PlayerScreen'
 import SettingsScreen from '../screens/SettingsScreen/SettingsScreen'
@@ -14,31 +14,33 @@ export interface Channel {
   logo: string
 }
 
-// REGRA 8 — BackStack: pilha de navegação obrigatória Samsung
+// Pilha de navegação — padrão Samsung
 const backStack: Screen[] = ['home']
 
 const KEYS = {
   BACK: 10009,
-  EXIT:  10182,
+  EXIT: 10182,
 }
 
 const App: React.FC = () => {
-  const [screen, setScreen] = useState<Screen>('settings')
-  const [showExit, setShowExit] = useState(false)
+  const [screen,    setScreen]    = useState<Screen>('settings')
+  const [showExit,  setShowExit]  = useState(false)
   const [exitFocus, setExitFocus] = useState<'yes'|'no'>('no')
   const setCurrentChannel = useChannelsStore(state => state.setCurrentChannel)
 
-  // REGRA 9 — Registrar teclas do controle Samsung Tizen
+  // Registrar teclas extras do controle Samsung (além das mandatory)
+  // Setas e Enter são mandatory keys — NÃO precisam de registerKey
   useEffect(() => {
     try {
       const tizen = (window as any).tizen
       if (tizen?.tvinputdevice) {
-        const keys = ['MediaPlay', 'MediaPause', 'MediaPlayPause', 'MediaStop', 
-                      'MediaRewind', 'MediaFastForward', 'ChannelUp', 'ChannelDown',
-                      'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue']
-        keys.forEach(key => {
-          try { tizen.tvinputdevice.registerKey(key) } catch {}
-        })
+        const extraKeys = [
+          'MediaPlay', 'MediaPause', 'MediaPlayPause', 'MediaStop',
+          'MediaRewind', 'MediaFastForward',
+          'ChannelUp', 'ChannelDown',
+          'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue',
+        ]
+        extraKeys.forEach(k => { try { tizen.tvinputdevice.registerKey(k) } catch {} })
       }
     } catch {}
   }, [])
@@ -49,53 +51,69 @@ const App: React.FC = () => {
     setScreen(s)
   }, [setCurrentChannel])
 
+  const exitApp = () => {
+    try { (window as any).tizen?.application?.getCurrentApplication()?.exit() }
+    catch { window.close() }
+  }
+
+  // Refs para evitar stale closure no handler de teclado
+  const showExitRef  = useRef(showExit)
+  const exitFocusRef = useRef(exitFocus)
+  useEffect(() => { showExitRef.current  = showExit  }, [showExit])
+  useEffect(() => { exitFocusRef.current = exitFocus }, [exitFocus])
+
   const goBack = useCallback(() => {
-    if (showExit) { setShowExit(false); return }
+    if (showExitRef.current) { setShowExit(false); return }
     if (backStack.length <= 1) {
       setShowExit(true)
       setExitFocus('no')
       return
     }
     backStack.pop()
-    const prev = backStack[backStack.length - 1]
-    setScreen(prev)
-  }, [showExit])
+    setScreen(backStack[backStack.length - 1])
+  }, [])
 
-  const exitApp = () => {
-    try { (window as any).tizen?.application?.getCurrentApplication()?.exit() }
-    catch { window.close() }
-  }
-
-  // REGRA 8 — captura BACK e EXIT globalmente
+  // PADRÃO SAMSUNG — tizenhwkey é o evento oficial para Back/Exit
+  // keydown com keyCode 10009 como fallback (funciona em alguns modelos)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    // Handler principal: tizenhwkey (padrão oficial Tizen)
+    const onHwKey = (e: any) => {
+      if (e.keyName === 'back') { e.preventDefault?.(); goBack() }
+      if (e.keyName === 'menu') { /* opcional: abrir settings */ }
+    }
+
+    // Handler fallback: keydown (funciona no simulador e em alguns modelos)
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.keyCode === KEYS.BACK) { e.preventDefault(); goBack() }
       if (e.keyCode === KEYS.EXIT) { e.preventDefault(); exitApp() }
 
-      // Diálogo de saída aberto — navegação interna
-      if (showExit) {
+      // Diálogo de saída aberto — navega entre Sair / Cancelar
+      if (showExitRef.current) {
         if (e.keyCode === 37 || e.keyCode === 39) {
           e.preventDefault()
           setExitFocus(f => f === 'yes' ? 'no' : 'yes')
         }
         if (e.keyCode === 13) {
           e.preventDefault()
-          if (exitFocus === 'yes') exitApp()
+          if (exitFocusRef.current === 'yes') exitApp()
           else setShowExit(false)
         }
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [goBack, showExit, exitFocus])
 
-  // REGRA 7 — salvar/restaurar estado ao entrar/sair do background
+    document.addEventListener('tizenhwkey', onHwKey)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('tizenhwkey', onHwKey)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [goBack])
+
+  // Salva screen ao ir para background
   useEffect(() => {
     const onVisibility = () => {
       if (document.hidden) {
-        try {
-          sessionStorage.setItem('ziiiTV_screen', screen)
-        } catch {}
+        try { sessionStorage.setItem('ziiiTV_screen', screen) } catch {}
       }
     }
     document.addEventListener('visibilitychange', onVisibility)
@@ -108,18 +126,14 @@ const App: React.FC = () => {
       {screen === 'home'     && <HomeScreen onPlay={(ch) => navigate('player', ch)} onSettings={() => navigate('settings')} />}
       {screen === 'player'   && <PlayerScreen onBack={() => { backStack.pop(); setScreen('home') }} />}
 
-      {/* REGRA 8 — Diálogo obrigatório de saída */}
+      {/* Diálogo obrigatório de saída — padrão Samsung */}
       {showExit && (
         <div style={exitOverlayStyle}>
           <div style={exitBoxStyle}>
             <p style={exitTitleStyle}>Sair do ziiiTV?</p>
             <div style={{ display:'flex', gap: 24, marginTop: 32 }}>
-              <button
-                style={{ ...exitBtnStyle, ...(exitFocus==='yes' ? exitBtnFocusStyle : {}) }}
-              >Sair</button>
-              <button
-                style={{ ...exitBtnStyle, ...(exitFocus==='no' ? exitBtnFocusStyle : {}) }}
-              >Cancelar</button>
+              <button style={{ ...exitBtnStyle, ...(exitFocus==='yes' ? exitBtnFocusStyle : {}) }}>Sair</button>
+              <button style={{ ...exitBtnStyle, ...(exitFocus==='no'  ? exitBtnFocusStyle : {}) }}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -128,7 +142,6 @@ const App: React.FC = () => {
   )
 }
 
-// Estilos inline para o diálogo (sem dep. de CSS module)
 const exitOverlayStyle: React.CSSProperties = {
   position:'fixed', inset:0, background:'rgba(0,0,0,0.85)',
   display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999
@@ -138,7 +151,7 @@ const exitBoxStyle: React.CSSProperties = {
   textAlign:'center', border:'1px solid rgba(255,255,255,0.1)'
 }
 const exitTitleStyle: React.CSSProperties = {
-  fontSize: 36, fontWeight:700, color:'#fff', fontFamily:'Outfit,sans-serif'
+  fontSize:36, fontWeight:700, color:'#fff', fontFamily:'Outfit,sans-serif'
 }
 const exitBtnStyle: React.CSSProperties = {
   fontSize:28, fontWeight:600, padding:'16px 48px', borderRadius:12,
