@@ -8,33 +8,57 @@ interface Props {
   onSettings?: () => void
 }
 
-// Conveyor belt: o card fica fixo, a lista desliza
-// O primeiro card focado sempre começa em x=RAIL_START
-const CARD_W   = 220
-const CARD_GAP = 16
-const RAIL_START = 48        // distância da borda esquerda até o 1º card visível
-const STEP = CARD_W + CARD_GAP // 236px por card
+// REGRA 1 — Mapa COMPLETO de keyCodes Samsung Tizen
+const KEYS = {
+  UP:         38,
+  DOWN:       40,
+  LEFT:       37,
+  RIGHT:      39,
+  ENTER:      13,
+  BACK:       10009,
+  EXIT:       10182,
+  PLAY:       415,
+  PAUSE:      19,
+  PLAY_PAUSE: 10252,
+  FF:         417,
+  RW:         412,
+  STOP:       413,
+  CH_UP:      427,
+  CH_DOWN:    428,
+  RED:        403,
+  GREEN:      404,
+  YELLOW:     405,
+  BLUE:       406,
+}
 
-// Throttle: impede que segurar ← → pule muitos cards de uma vez
-const KEY_REPEAT_MS = 130    // ms mínimo entre cada movimento de foco
+// Conveyor belt
+const CARD_W    = 220
+const CARD_GAP  = 16
+const RAIL_START = 48
+const STEP = CARD_W + CARD_GAP  // 236px
 
-const HomeScreen: React.FC<Props> = ({ onPlay }) => {
-  const groups           = useChannelsStore(s => s.groups)
+// REGRA 4 — Throttle: 130ms = ~7 cards/s; sem throttle = pula 30+ cards segurando
+const KEY_REPEAT_MS = 130
+
+const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
+  const groups            = useChannelsStore(s => s.groups)
   const setCurrentChannel = useChannelsStore(s => s.setCurrentChannel)
-  const cats             = Object.keys(groups)
+  const cats              = Object.keys(groups)
 
   const [catIdx, setCatIdx] = useState(0)
   const [chIdx,  setChIdx]  = useState(0)
 
-  const rowMemory      = useRef<Record<number, number>>({})
-  const rowElemRefs    = useRef<Record<number, HTMLDivElement | null>>({})
-  const rowsContainerRef = useRef<HTMLDivElement | null>(null)
-  const lastKeyTime    = useRef(0)   // throttle
+  // REGRA 2 — foco nunca some: pressed state para feedback tátil
+  const [pressed, setPressed] = useState(false)
+
+  const rowMemory   = useRef<Record<number, number>>({})
+  const rowElemRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const lastKeyTime = useRef(0)
 
   const currentCat = cats[catIdx] || ''
   const channels   = (groups[currentCat] || []).slice(0, 80)
 
-  // Scroll vertical da row ativa para view
+  // Scroll vertical da row ativa
   const scrollToRow = useCallback((ci: number) => {
     rowElemRefs.current[ci]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [])
@@ -42,39 +66,54 @@ const HomeScreen: React.FC<Props> = ({ onPlay }) => {
   useEffect(() => { scrollToRow(catIdx) }, [catIdx, scrollToRow])
 
   const onKey = useCallback((e: KeyboardEvent) => {
-    const k    = e.keyCode
-    const isNav = k === 37 || k === 38 || k === 39 || k === 40
-    if (!isNav && k !== 13) return
+    const k = e.keyCode
 
-    // Throttle — ignora repetições muito rápidas
+    // BACK e EXIT são gerenciados pelo App.tsx (não interceptar aqui)
+    if (k === KEYS.BACK || k === KEYS.EXIT) return
+
+    // Só navegação e enter
+    if (![KEYS.UP, KEYS.DOWN, KEYS.LEFT, KEYS.RIGHT, KEYS.ENTER,
+           KEYS.CH_UP, KEYS.CH_DOWN].includes(k)) return
+
+    // REGRA 4 — throttle de input
     const now = performance.now()
     if (now - lastKeyTime.current < KEY_REPEAT_MS) return
     lastKeyTime.current = now
 
     e.preventDefault()
+
     const chs = (groups[cats[catIdx]] || []).slice(0, 80)
 
-    if (k === 40) {                                   // DOWN
+    if (k === KEYS.DOWN || k === KEYS.CH_DOWN) {
       const next = Math.min(catIdx + 1, cats.length - 1)
       rowMemory.current[catIdx] = chIdx
       setCatIdx(next)
       setChIdx(rowMemory.current[next] ?? 0)
-    } else if (k === 38) {                            // UP
+
+    } else if (k === KEYS.UP || k === KEYS.CH_UP) {
       const next = Math.max(catIdx - 1, 0)
       rowMemory.current[catIdx] = chIdx
       setCatIdx(next)
       setChIdx(rowMemory.current[next] ?? 0)
-    } else if (k === 39) {                            // RIGHT
+
+    } else if (k === KEYS.RIGHT) {
       const next = Math.min(chIdx + 1, chs.length - 1)
       rowMemory.current[catIdx] = next
       setChIdx(next)
-    } else if (k === 37) {                            // LEFT
+
+    } else if (k === KEYS.LEFT) {
       const next = Math.max(chIdx - 1, 0)
       rowMemory.current[catIdx] = next
       setChIdx(next)
-    } else if (k === 13 && chs[chIdx]) {              // OK / Enter
-      setCurrentChannel(chs[chIdx])
-      onPlay(chs[chIdx])
+
+    } else if (k === KEYS.ENTER && chs[chIdx]) {
+      // REGRA 6 — pressed state: feedback visual rápido antes de navegar
+      setPressed(true)
+      setTimeout(() => {
+        setPressed(false)
+        setCurrentChannel(chs[chIdx])
+        onPlay(chs[chIdx])
+      }, 80)
     }
   }, [catIdx, chIdx, cats, groups, onPlay, setCurrentChannel])
 
@@ -85,23 +124,30 @@ const HomeScreen: React.FC<Props> = ({ onPlay }) => {
 
   if (cats.length === 0) return (
     <div className={styles.root}>
-      <div className={styles.empty}>Carregando canais...</div>
+      <div className={styles.empty}>
+        <span>Carregando canais...</span>
+      </div>
     </div>
   )
 
   return (
     <div className={styles.root}>
+      {/* Hero */}
       <div className={styles.hero}>
         <span className={styles.logo}>ziii<span className={styles.logoAccent}>TV</span></span>
         <span className={styles.heroSub}>{channels.length} canais · {cats.length} categorias</span>
+        {onSettings && (
+          <button className={styles.settingsBtn} onClick={onSettings}>⚙️</button>
+        )}
       </div>
 
-      <div className={styles.rows} ref={rowsContainerRef}>
+      {/* Rows */}
+      <div className={styles.rows}>
         {cats.map((cat, ci) => {
-          const chs        = (groups[cat] || []).slice(0, 80)
+          const chs         = (groups[cat] || []).slice(0, 80)
           const isActiveRow = ci === catIdx
-          // translateX que mantém o card focado sempre na posição RAIL_START
-          const offset     = isActiveRow ? chIdx * STEP : 0
+          // translateX conveyor belt
+          const offset = isActiveRow ? chIdx * STEP : 0
 
           return (
             <div
@@ -109,9 +155,14 @@ const HomeScreen: React.FC<Props> = ({ onPlay }) => {
               className={`${styles.row} ${isActiveRow ? styles.rowActive : ''}`}
               ref={el => { rowElemRefs.current[ci] = el }}
             >
-              <h2 className={`${styles.rowTitle} ${isActiveRow ? styles.rowTitleActive : ''}`}>{cat}</h2>
+              <h2 className={`${styles.rowTitle} ${isActiveRow ? styles.rowTitleActive : ''}`}>
+                {cat}
+                {isActiveRow && (
+                  <span className={styles.rowCounter}>{chIdx + 1} / {chs.length}</span>
+                )}
+              </h2>
 
-              {/* Janela com overflow hidden — só isso garante o conveyor */}
+              {/* Janela do conveyor belt */}
               <div className={styles.cardsWindow}>
                 <div
                   className={styles.cards}
@@ -120,24 +171,43 @@ const HomeScreen: React.FC<Props> = ({ onPlay }) => {
                   {chs.map((ch, idx) => {
                     const focused  = isActiveRow && idx === chIdx
                     const neighbor = isActiveRow && !focused
+                    // Top 10: só mostra para os primeiros 10 canais
+                    const rankNum  = idx < 10 ? idx + 1 : null
+
                     return (
-                      <div
-                        key={ch.url}
-                        className={
-                          `${styles.card}` +
-                          (focused  ? ` ${styles.cardFocused}`  : '') +
-                          (neighbor ? ` ${styles.cardNeighbor}` : '')
-                        }
-                        onClick={() => { setCurrentChannel(ch); onPlay(ch) }}
-                      >
-                        <div className={styles.cardImg}>
-                          {ch.logo
-                            ? <img src={ch.logo} alt={ch.name} loading="lazy" />
-                            : <div className={styles.cardPlaceholder}>{ch.name[0]}</div>
+                      // REGRA 5 — wrapper relativo para o número ficar externo ao card
+                      <div key={ch.url} className={styles.cardWrapper}>
+                        {/* Número Top10 — FORA do card, à esquerda, superposto */}
+                        {rankNum !== null && (
+                          <span className={
+                            `${styles.rankNum}` +
+                            (focused ? ` ${styles.rankNumFocused}` : '')
+                          }>
+                            {rankNum}
+                          </span>
+                        )}
+
+                        <div
+                          className={
+                            `${styles.card}` +
+                            (focused  ? ` ${styles.cardFocused}`  : '') +
+                            (focused && pressed ? ` ${styles.cardPressed}` : '') +
+                            (neighbor ? ` ${styles.cardNeighbor}` : '')
                           }
-                          {focused && <div className={styles.cardGlow} />}
+                          onClick={() => {
+                            setCurrentChannel(ch)
+                            onPlay(ch)
+                          }}
+                        >
+                          <div className={styles.cardImg}>
+                            {ch.logo
+                              ? <img src={ch.logo} alt={ch.name} loading="lazy" />
+                              : <div className={styles.cardPlaceholder}>{ch.name[0]}</div>
+                            }
+                            {focused && <div className={styles.cardGlow} />}
+                          </div>
+                          <span className={styles.cardName}>{ch.name}</span>
                         </div>
-                        <span className={styles.cardName}>{ch.name}</span>
                       </div>
                     )
                   })}
