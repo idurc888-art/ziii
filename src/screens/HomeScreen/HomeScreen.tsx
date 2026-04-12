@@ -37,9 +37,6 @@ const CARD_GAP  = 16
 const RAIL_START = 48
 const STEP = CARD_W + CARD_GAP  // 236px
 
-// REGRA 4 — Throttle: 130ms = ~7 cards/s; sem throttle = pula 30+ cards segurando
-const KEY_REPEAT_MS = 130
-
 const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
   const groups            = useChannelsStore(s => s.groups)
   const setCurrentChannel = useChannelsStore(s => s.setCurrentChannel)
@@ -53,7 +50,6 @@ const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
 
   const rowMemory   = useRef<Record<number, number>>({})
   const rowElemRefs = useRef<Record<number, HTMLDivElement | null>>({})
-  const lastKeyTime = useRef(0)
 
   const currentCat = cats[catIdx] || ''
   const channels   = (groups[currentCat] || []).slice(0, 80)
@@ -68,17 +64,12 @@ const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
   const onKey = useCallback((e: KeyboardEvent) => {
     const k = e.keyCode
 
-    // BACK e EXIT são gerenciados pelo App.tsx (não interceptar aqui)
+    // BACK e EXIT são gerenciados pelo App.tsx
     if (k === KEYS.BACK || k === KEYS.EXIT) return
 
     // Só navegação e enter
     if (![KEYS.UP, KEYS.DOWN, KEYS.LEFT, KEYS.RIGHT, KEYS.ENTER,
            KEYS.CH_UP, KEYS.CH_DOWN].includes(k)) return
-
-    // REGRA 4 — throttle de input
-    const now = performance.now()
-    if (now - lastKeyTime.current < KEY_REPEAT_MS) return
-    lastKeyTime.current = now
 
     e.preventDefault()
 
@@ -97,17 +88,12 @@ const HomeScreen: React.FC<Props> = ({ onPlay, onSettings }) => {
       setChIdx(rowMemory.current[next] ?? 0)
 
     } else if (k === KEYS.RIGHT) {
-      const next = Math.min(chIdx + 1, chs.length - 1)
-      rowMemory.current[catIdx] = next
-      setChIdx(next)
+      setChIdx(prev => Math.min(prev + 1, chs.length - 1))
 
     } else if (k === KEYS.LEFT) {
-      const next = Math.max(chIdx - 1, 0)
-      rowMemory.current[catIdx] = next
-      setChIdx(next)
+      setChIdx(prev => Math.max(prev - 1, 0))
 
     } else if (k === KEYS.ENTER && chs[chIdx]) {
-      // REGRA 6 — pressed state: feedback visual rápido antes de navegar
       setPressed(true)
       setTimeout(() => {
         setPressed(false)

@@ -47,7 +47,37 @@ export const useChannelsStore = create<ChannelsState>((set) => ({
       const { type, payload, percent, error } = e.data
       if (type === 'PROGRESS') set({ parseProgress: percent })
       else if (type === 'DONE') {
-        set({ channels: payload.channels, groups: payload.grouped, loading: false, parseProgress: 100 })
+        // Filtrar apenas categorias prioritárias com limite
+        const priorityGroups = ['HD', 'FILMES', 'SÉRIES', 'SERIES']
+        const filtered: Record<string, Channel[]> = {}
+        
+        // Pegar 5 canais de cada categoria prioritária
+        Object.keys(payload.grouped).forEach(group => {
+          const groupUpper = group.toUpperCase()
+          const isPriority = priorityGroups.some(p => groupUpper.includes(p))
+          
+          if (isPriority) {
+            filtered[group] = payload.grouped[group].slice(0, 5)
+          }
+        })
+        
+        // Pegar outros canais até completar 100 total
+        const totalFiltered = Object.values(filtered).flat().length
+        const remaining = 100 - totalFiltered
+        
+        if (remaining > 0) {
+          Object.keys(payload.grouped).forEach(group => {
+            if (!filtered[group]) {
+              const take = Math.min(5, remaining)
+              if (take > 0) {
+                filtered[group] = payload.grouped[group].slice(0, take)
+              }
+            }
+          })
+        }
+        
+        const allChannels = Object.values(filtered).flat()
+        set({ channels: allChannels, groups: filtered, loading: false, parseProgress: 100 })
         worker.terminate(); resolve()
       } else if (type === 'ERROR') {
         set({ loading: false, error }); worker.terminate(); reject(new Error(error))

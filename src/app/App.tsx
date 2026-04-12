@@ -28,6 +28,21 @@ const App: React.FC = () => {
   const [exitFocus, setExitFocus] = useState<'yes'|'no'>('no')
   const setCurrentChannel = useChannelsStore(state => state.setCurrentChannel)
 
+  // REGRA 9 — Registrar teclas do controle Samsung Tizen
+  useEffect(() => {
+    try {
+      const tizen = (window as any).tizen
+      if (tizen?.tvinputdevice) {
+        const keys = ['MediaPlay', 'MediaPause', 'MediaPlayPause', 'MediaStop', 
+                      'MediaRewind', 'MediaFastForward', 'ChannelUp', 'ChannelDown',
+                      'ColorF0Red', 'ColorF1Green', 'ColorF2Yellow', 'ColorF3Blue']
+        keys.forEach(key => {
+          try { tizen.tvinputdevice.registerKey(key) } catch {}
+        })
+      }
+    } catch {}
+  }, [])
+
   const navigate = useCallback((s: Screen, ch?: Channel) => {
     if (ch) setCurrentChannel(ch)
     backStack.push(s)
