@@ -1,0 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100;300;400;600;700;800;900&family=Barlow+Condensed:wght@600;700;800&display=swap');
+
+*, ::before, ::after { box-sizing: border-box; margin: 0; padding: 0; }
+* { outline: none !important; scrollbar-width: none; }
+::-webkit-scrollbar { display: none; }
+
+:root {
+  --bg: #000000;
+  --accent: #ff006e;
+  --accent-glow: rgba(255, 0, 110, 0.4);
+  --surface: #0f0f0f;
+  --text: #ffffff;
+  --text-muted: #a0a0a0;
+  --sidebar-width: 70px;
+}
+
+html, body, #root {
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes pulse-glow {
+  0%,100% { text-shadow: 0 0 20px var(--accent-glow); }
+  50% { text-shadow: 0 0 60px rgba(255,0,110,1); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+@keyframes glowFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes cardEnter {
+  from { 
+    opacity: 0; 
+    transform: scale(1.0); 
+  }
+  to { 
+    opacity: 1; 
+    transform: scale(1.08); 
+  }
+}
+
+.text-pink { color: var(--accent); }
+.glow-pink { text-shadow: 0 0 30px var(--accent-glow); }

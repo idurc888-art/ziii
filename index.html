@@ -11,12 +11,13 @@
   
   <script>
     // === ziiiTV BOOT INJECTOR ===
-    var PROXY_URL = 'http://10.0.0.102:3000?url=' + encodeURIComponent('http://cdc55.cc/get.php?username=0357028521&password=82740&type=m3u_plus&output=ts');
+    var PROXY_BASE = 'http://10.0.0.102:3000';
+    var PLAYLIST_URL = 'http://cdc55.cc/get.php?username=0357028521&password=82740&type=m3u_plus&output=ts';
 
     // 1. Força localStorage
     try {
       localStorage.removeItem('ziiitv_state');
-      localStorage.setItem('ziiitv_state', JSON.stringify({ playlistUrl: PROXY_URL }));
+      localStorage.setItem('ziiitv_state', JSON.stringify({ playlistUrl: PROXY_BASE + '?url=' + encodeURIComponent(PLAYLIST_URL) }));
     } catch(e) {}
 
     // 2. Debug visual
@@ -27,39 +28,38 @@
         el.style.cssText = 'position:fixed;top:0;left:0;right:0;background:rgba(0,0,0,0.9);color:#0f0;font-size:20px;padding:10px 16px;z-index:99999;font-family:monospace;max-height:220px;overflow:auto;'; 
         document.body.appendChild(el); 
       }
-      el.innerHTML += '<div>' + new Date().toISOString().slice(11,19) + ' ' + msg + '</div>';
+      el.innerHTML += '<div>[' + new Date().toISOString().slice(11,19) + '] ' + msg + '</div>';
       el.scrollTop = el.scrollHeight;
     };
 
-    // 3. Intercepta fetch — loga resultado
+    // 3. Intercepta fetch
     var _origFetch = window.fetch;
     window.fetch = function(url, opts) {
       var u = typeof url === 'string' ? url : String(url);
-      if (u.indexOf('cdc55.cc') !== -1 && u.indexOf('10.0.0.102') === -1) {
-        u = 'http://10.0.0.102:3000?url=' + encodeURIComponent(u);
-        window.__ziiiDebug('→ PROXY: ' + u.slice(0,70));
-        url = u;
+      if (u.indexOf('http') === 0 && u.indexOf(PROXY_BASE) === -1) {
+        url = PROXY_BASE + '?url=' + encodeURIComponent(u);
+        window.__ziiiDebug('→ PROXY: ' + url.slice(0,60) + '...');
       }
-      if (u.indexOf('10.0.0.102') !== -1 || u.indexOf('cdc55') !== -1) {
-        window.__ziiiDebug('FETCH: ' + u.slice(0,70));
+      if (url.indexOf('10.0.0.102') !== -1 || url.indexOf('cdc55') !== -1) {
         return _origFetch(url, opts).then(function(r) {
-          window.__ziiiDebug('RESP: ' + r.status + ' ok=' + r.ok);
-          return r.clone().text().then(function(t) {
-            var lines = t.split('\n').length;
-            var valid = (t.indexOf('#EXTM3U') !== -1);
-            window.__ziiiDebug('M3U: ' + lines + ' linhas, valid=' + valid);
-            return r;
-          });
+          if (url.indexOf('get.php') !== -1) {
+            return r.clone().text().then(function(t) {
+              var valid = t.indexOf('#EXTM3U') !== -1;
+              window.__ziiiDebug('M3U: ' + t.split('\n').length + ' linhas, valid=' + valid);
+              return r;
+            });
+          }
+          return r;
         }).catch(function(e) {
-          window.__ziiiDebug('ERR: ' + e.message);
+          window.__ziiiDebug('FETCH ERR: ' + e.message);
           throw e;
         });
       }
       return _origFetch(url, opts);
     };
 
-    window.onerror = function(msg, url, lineNo, columnNo, error) {
-      window.__ziiiDebug('CRITICAL JS ERROR: ' + msg);
+    window.onerror = function(msg, url, l, c, err) {
+      window.__ziiiDebug('JS ERROR: ' + msg);
       return false;
     };
   </script>

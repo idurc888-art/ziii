@@ -55,8 +55,10 @@ const server = http.createServer((req, res) => {
       imgRes.pipe(res);
     }).on('error', (err) => {
       console.error('[IMG PROXY] Error:', imgUrl, err.message);
-      res.writeHead(502, CORS);
-      res.end('Image proxy error: ' + err.message);
+      if (!res.headersSent) {
+        res.writeHead(502, CORS);
+        res.end('Image proxy error: ' + err.message);
+      }
     });
     return;
   }
