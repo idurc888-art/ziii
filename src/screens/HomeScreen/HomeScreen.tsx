@@ -3,7 +3,10 @@ import { useChannelsStore } from '../../store/channelsStore'
 import type { Channel } from '../../app/App'
 import styles from './HomeScreen.module.css'
 
-interface Props { onPlay: (ch: Channel) => void }
+interface Props {
+  onPlay: (ch: Channel) => void
+  onSettings?: () => void
+}
 
 const CARD_W = 220
 const CARD_GAP = 16
@@ -18,11 +21,13 @@ const HomeScreen: React.FC<Props> = ({ onPlay }) => {
   const [chIdx, setChIdx] = useState(0)
   const rowMemory = useRef<Record<number, number>>({})
   const rowRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const rowsContainerRef = useRef<HTMLDivElement | null>(null)
+  const rowElemRefs = useRef<Record<number, HTMLDivElement | null>>({})
 
   const currentCat = cats[catIdx] || ''
   const channels = groups[currentCat] || []
 
-  // Scroll suave para o card ativo
+  // Scroll horizontal suave para o card ativo
   const scrollToCard = useCallback((ci: number, idx: number) => {
     const row = rowRefs.current[ci]
     if (!row) return
@@ -30,30 +35,41 @@ const HomeScreen: React.FC<Props> = ({ onPlay }) => {
     row.scrollTo({ left: Math.max(0, offset), behavior: 'smooth' })
   }, [])
 
-  useEffect(() => { scrollToCard(catIdx, chIdx) }, [catIdx, chIdx, scrollToCard])
+  // Scroll vertical suave para a row ativa
+  const scrollToRow = useCallback((ci: number) => {
+    const rowElem = rowElemRefs.current[ci]
+    if (rowElem) {
+      rowElem.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [])
+
+  useEffect(() => {
+    scrollToCard(catIdx, chIdx)
+    scrollToRow(catIdx)
+  }, [catIdx, chIdx, scrollToCard, scrollToRow])
 
   const onKey = useCallback((e: KeyboardEvent) => {
     const chs = groups[cats[catIdx]] || []
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown' || e.keyCode === 40) {
       e.preventDefault()
       const next = Math.min(catIdx + 1, cats.length - 1)
       rowMemory.current[catIdx] = chIdx
-      const nextCh = rowMemory.current[next] || 0
+      const nextCh = rowMemory.current[next] ?? 0
       setCatIdx(next)
       setChIdx(nextCh)
-    } else if (e.key === 'ArrowUp') {
+    } else if (e.key === 'ArrowUp' || e.keyCode === 38) {
       e.preventDefault()
       const next = Math.max(catIdx - 1, 0)
       rowMemory.current[catIdx] = chIdx
-      const nextCh = rowMemory.current[next] || 0
+      const nextCh = rowMemory.current[next] ?? 0
       setCatIdx(next)
       setChIdx(nextCh)
-    } else if (e.key === 'ArrowRight') {
+    } else if (e.key === 'ArrowRight' || e.keyCode === 39) {
       e.preventDefault()
       const next = Math.min(chIdx + 1, chs.length - 1)
       rowMemory.current[catIdx] = next
       setChIdx(next)
-    } else if (e.key === 'ArrowLeft') {
+    } else if (e.key === 'ArrowLeft' || e.keyCode === 37) {
       e.preventDefault()
       const next = Math.max(chIdx - 1, 0)
       rowMemory.current[catIdx] = next
@@ -82,18 +98,22 @@ const HomeScreen: React.FC<Props> = ({ onPlay }) => {
         <span className={styles.heroSub}>{channels.length} canais · {cats.length} categorias</span>
       </div>
 
-      <div className={styles.rows}>
+      <div className={styles.rows} ref={rowsContainerRef}>
         {cats.map((cat, ci) => {
           const chs = groups[cat] || []
           const isActiveRow = ci === catIdx
           return (
-            <div key={cat} className={`${styles.row} ${isActiveRow ? styles.rowActive : ''}`}>
+            <div
+              key={cat}
+              className={`${styles.row} ${isActiveRow ? styles.rowActive : ''}`}
+              ref={el => { rowElemRefs.current[ci] = el }}
+            >
               <h2 className={`${styles.rowTitle} ${isActiveRow ? styles.rowTitleActive : ''}`}>{cat}</h2>
               <div
                 className={styles.cards}
                 ref={el => { rowRefs.current[ci] = el }}
               >
-                {chs.slice(0, 30).map((ch, idx) => {
+                {chs.slice(0, 80).map((ch, idx) => {
                   const focused = isActiveRow && idx === chIdx
                   return (
                     <div

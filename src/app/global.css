@@ -8,6 +8,8 @@
   --bg: #000000;
   --accent: #ff006e;
   --accent-glow: rgba(255, 0, 110, 0.4);
+  --pink: #e91e8c;
+  --pink-glow: rgba(233, 30, 140, 0.45);
   --surface: #0f0f0f;
   --text: #ffffff;
   --text-muted: #a0a0a0;
@@ -38,15 +40,15 @@ html, body, #root {
   to { opacity: 1; }
 }
 @keyframes cardEnter {
-  from { 
-    opacity: 0; 
-    transform: scale(1.0); 
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
   }
-  to { 
-    opacity: 1; 
-    transform: scale(1.08); 
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
-.text-pink { color: var(--accent); }
-.glow-pink { text-shadow: 0 0 30px var(--accent-glow); }
+.text-pink { color: var(--pink); }
+.glow-pink { text-shadow: 0 0 30px var(--pink-glow); }
