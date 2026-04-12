@@ -6,9 +6,12 @@ SDB=~/tizen-studio/tools/sdb
 TV=UN50RU7100GXZD
 CERT=IptvFinal
 
+echo "▶ Construindo Tizen Vanilla (Pulo do Vite)..."
+cp testes-tv/test-12-player-moderno.html dist/index.html
+
 echo "▶ Copiando config.xml e icon para dist..."
-cp config.xml dist/config.xml
-cp icon.png dist/icon.png
+cp public/config.xml dist/config.xml
+cp public/icon.png dist/icon.png
 
 echo "▶ Empacotando .wgt..."
 cd dist
