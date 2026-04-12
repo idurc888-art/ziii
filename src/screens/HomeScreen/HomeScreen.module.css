@@ -70,21 +70,29 @@
   transition: color 180ms ease-out;
 }
 
-.rowTitleActive {
-  color: var(--text);
+.rowTitleActive { color: var(--text); }
+
+/*
+  CONVEYOR BELT
+  cardsWindow = janela fixa, overflow hidden
+  cards       = faixa que desliza via translateX
+  O card focado SEMPRE aparece em x = 48px (RAIL_START)
+*/
+.cardsWindow {
+  overflow: hidden;
+  padding: 12px 0 20px;     /* espaço vertical para o scale do card focado */
+  /* margem esquerda = RAIL_START, o primeiro card visível fica alinhado */
+  padding-left: 48px;
 }
 
-/* Cards scroll container */
 .cards {
   display: flex;
   gap: 16px;
-  padding: 8px 48px 20px;
-  overflow-x: auto;
-  overflow-y: visible;
-  scrollbar-width: none;
-  scroll-behavior: smooth;
+  /* A transição do deslize — suave mas rápida para parecer responsiva */
+  transition: transform 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform;
+  /* Não tem overflow nem scroll — o translateX faz todo o trabalho */
 }
-.cards::-webkit-scrollbar { display: none; }
 
 /* Card */
 .card {
@@ -165,7 +173,7 @@
 
 @keyframes glowPulse {
   0%, 100% { opacity: 0.25; }
-  50% { opacity: 0.5; }
+  50%       { opacity: 0.5; }
 }
 
 /* Card name */
@@ -183,7 +191,7 @@
 
 .cardFocused .cardName { color: var(--text); }
 
-/* Cards vizinhos se afastam levemente */
+/* Vizinhos se afastam levemente */
 .cardNeighbor {
   transform: scale(0.96);
   opacity: 0.55;
