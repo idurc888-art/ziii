@@ -1,0 +1,8 @@
+node_modules/
+backups/
+dist/
+context/
+*.wgt
+.DS_Store
+*.log
+/tmp/

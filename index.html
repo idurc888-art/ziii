@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=1920,initial-scale=1"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;900&display=swap" rel="stylesheet">
+  <!-- Shaka Player (Stack.md 🥇 Recommendation) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.3.5/shaka-player.compiled.js"></script>
+  
+  <script>
+    // === ziiiTV BOOT INJECTOR ===
+    var PROXY_URL = 'http://10.0.0.102:3000?url=' + encodeURIComponent('http://cdc55.cc/get.php?username=0357028521&password=82740&type=m3u_plus&output=ts');
+
+    // 1. Força localStorage
+    try {
+      localStorage.removeItem('ziiitv_state');
+      localStorage.setItem('ziiitv_state', JSON.stringify({ playlistUrl: PROXY_URL }));
+    } catch(e) {}
+
+    // 2. Debug visual
+    window.__ziiiDebug = function(msg) {
+      var el = document.getElementById('__dbg');
+      if (!el) { 
+        el = document.createElement('div'); el.id = '__dbg'; 
+        el.style.cssText = 'position:fixed;top:0;left:0;right:0;background:rgba(0,0,0,0.9);color:#0f0;font-size:20px;padding:10px 16px;z-index:99999;font-family:monospace;max-height:220px;overflow:auto;'; 
+        document.body.appendChild(el); 
+      }
+      el.innerHTML += '<div>' + new Date().toISOString().slice(11,19) + ' ' + msg + '</div>';
+      el.scrollTop = el.scrollHeight;
+    };
+
+    // 3. Intercepta fetch — loga resultado
+    var _origFetch = window.fetch;
+    window.fetch = function(url, opts) {
+      var u = typeof url === 'string' ? url : String(url);
+      if (u.indexOf('cdc55.cc') !== -1 && u.indexOf('10.0.0.102') === -1) {
+        u = 'http://10.0.0.102:3000?url=' + encodeURIComponent(u);
+        window.__ziiiDebug('→ PROXY: ' + u.slice(0,70));
+        url = u;
+      }
+      if (u.indexOf('10.0.0.102') !== -1 || u.indexOf('cdc55') !== -1) {
+        window.__ziiiDebug('FETCH: ' + u.slice(0,70));
+        return _origFetch(url, opts).then(function(r) {
+          window.__ziiiDebug('RESP: ' + r.status + ' ok=' + r.ok);
+          return r.clone().text().then(function(t) {
+            var lines = t.split('\n').length;
+            var valid = (t.indexOf('#EXTM3U') !== -1);
+            window.__ziiiDebug('M3U: ' + lines + ' linhas, valid=' + valid);
+            return r;
+          });
+        }).catch(function(e) {
+          window.__ziiiDebug('ERR: ' + e.message);
+          throw e;
+        });
+      }
+      return _origFetch(url, opts);
+    };
+
+    window.onerror = function(msg, url, lineNo, columnNo, error) {
+      window.__ziiiDebug('CRITICAL JS ERROR: ' + msg);
+      return false;
+    };
+  </script>
+  <script>
+    (function() {
+      var s = document.createElement('script');
+      s.src = '$WEBAPIS/webapis/webapis.js';
+      s.onerror = function() { console.warn('[ziiiTV] webapis.js não encontrado'); };
+      document.head.appendChild(s);
+    })();
+  </script>
+
+  <title>ziiiTV Premium Pro</title>
+  <style>
+    /* ===== REGRA 3 & 5 — TIPOGRAFIA E SAFE ZONE ===== */
+    :root {
+      --pink: #ff1f8c;
+      --pink-glow: rgba(255, 31, 140, 0.6);
+      --bg: #000000;
+      --surface: #0a0a0a;
+      --surface2: #111111;
+      --text: #ffffff;
+      --text-muted: rgba(255, 255, 255, 0.5);
+      --border: rgba(255, 255, 255, 0.1);
+
+      /* Escala Tipográfica Tizen Pro */
+      --tv-text-hero: 100px;
+      --tv-text-title: 40px;
+      --tv-text-heading: 32px;
+      --tv-text-body: 26px;
+      --tv-text-meta: 20px;
+      --tv-text-min: 18px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; outline: none; }
+    html, body { 
+      width: 1920px; height: 1080px; overflow: hidden; 
+      background: var(--bg); color: var(--text); 
+      font-family: 'Outfit', sans-serif;
+      transform-origin: top left;
+    }
+
+    .app-root {
+      width: 1920px; height: 1080px;
+      padding: 5% 6%; /* Safe Zone Samsung */
+      position: relative;
+    }
+
+    /* ===== REGRA 6 — ESTADOS VISUAIS ===== */
+    .card { opacity: 1; transform: scale(1); transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1); flex-shrink: 0; width: 330px; position: relative; }
+    .card.focused { 
+      transform: scale(1.06); 
+      z-index: 100 !important;
+    }
+    .card.focused .card-img-wrap {
+      border: 3px solid var(--pink);
+      box-shadow: 0 0 24px var(--pink-glow);
+    }
+    .card.pressed { transform: scale(0.96); transition-duration: 80ms; }
+    
+    .loading-shimmer {
+      background: linear-gradient(90deg, var(--surface2) 25%, #1a1a1a 50%, var(--surface2) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite linear;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* ===== COMPONENTS ===== */
+    .sidebar { position: absolute; left: 0; top: 0; bottom: 0; width: 100px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 40px; z-index: 1000; border-right: 1px solid var(--border); background: rgba(0,0,0,0.8); }
+    .sidebar-icon { font-size: 30px; color: var(--text-muted); transition: all 0.2s; }
+    .sidebar-icon.focused { color: var(--pink); transform: scale(1.2); text-shadow: 0 0 10px var(--pink-glow); }
+
+    .top-nav { position: absolute; top: 60px; left: 140px; display: flex; gap: 50px; z-index: 1000; }
+    .nav-item { font-size: var(--tv-text-heading); font-weight: 400; color: var(--text-muted); transition: all 0.2s; text-transform: lowercase; }
+    .nav-item.focused { color: #fff; transform: scale(1.1); text-shadow: 0 0 15px rgba(255,255,255,0.4); }
+    .nav-item.active { color: #fff; font-weight: 700; border-bottom: 4px solid var(--pink); }
+
+    .screen { position: absolute; inset: 0; display: none; overflow: hidden; }
+    .screen.active { display: flex; animation: fadeIn 0.4s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    #scr-loading { flex-direction: column; align-items: center; justify-content: center; background: radial-gradient(circle at center, #1a0a25 0%, var(--bg) 100%); z-index: 9000; }
+    .loading-logo { font-size: 110px; font-weight: 900; letter-spacing: -5px; }
+    .loading-logo span { color: var(--pink); }
+    .progress-wrap { margin-top: 40px; width: 600px; text-align: center; }
+    .progress-bar-bg { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; margin-top: 15px; }
+    .progress-bar-fill { height: 100%; width: 0%; background: var(--pink); box-shadow: 0 0 15px var(--pink-glow); transition: width 0.3s; }
+    .progress-text { font-size: var(--tv-text-body); color: var(--text-muted); }
+
+    #scr-home { flex-direction: column; padding: 120px 80px 0 120px; }
+    .hero { height: 500px; display: flex; flex-direction: column; justify-content: center; margin-bottom: 40px; }
+    .hero-title { font-size: var(--tv-text-hero); font-weight: 900; line-height: 0.9; }
+    .hero-title .pink { color: var(--pink); text-shadow: 0 0 30px var(--pink-glow); }
+    .hero-btn { margin-top: 30px; border: 3px solid #fff; border-radius: 50px; padding: 20px 50px; font-size: var(--tv-text-body); font-weight: 700; width: fit-content; transition: all 0.2s; }
+    .hero-btn.focused { background: #fff; color: #000; transform: scale(1.1); }
+
+    .home-rows { flex: 1; overflow-y: auto; padding-bottom: 100px; scroll-behavior: smooth; }
+    .home-rows::-webkit-scrollbar { display: none; }
+    .row { margin-bottom: 70px; }
+    .row-title { font-size: var(--tv-text-heading); font-weight: 800; margin-bottom: 30px; text-transform: lowercase; }
+    .row-title span { color: var(--pink); }
+    .cards-strip { display: flex; gap: 30px; overflow-x: auto; scroll-behavior: smooth; padding: 20px 0; }
+    .cards-strip::-webkit-scrollbar { display: none; }
+
+    .card-img-wrap { width: 330px; height: 185px; border-radius: 15px; background: var(--surface2); overflow: hidden; border: 2px solid transparent; transition: all 0.2s; }
+    .card.vertical { width: 230px; }
+    .card.vertical .card-img-wrap { width: 230px; height: 345px; }
+    .card-name { margin-top: 20px; font-size: var(--tv-text-meta); font-weight: 500; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card.focused .card-name { color: #fff; }
+
+    /* ===== REGRA 9 — PLAYER & AUTO-HIDE ===== */
+    #scr-player { background: #000; width: 1920px; height: 1080px; }
+    #player-video { width: 100%; height: 100%; }
+    #player-ui { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 40%); opacity: 0; transition: opacity 400ms ease; pointer-events: none; }
+    #player-ui.visible { opacity: 1; pointer-events: all; }
+    .player-controls { position: absolute; bottom: 80px; left: 100px; right: 100px; display: flex; flex-direction: column; gap: 20px; }
+    .player-title { font-size: var(--tv-text-title); font-weight: 800; }
+    .seek-bar-bg { width: 100%; height: 8px; background: rgba(255,255,255,0.2); border-radius: 10px; }
+    .seek-bar-fill { height: 100%; width: 0%; background: var(--pink); border-radius: 10px; }
+
+    /* ===== MODAL / EXIT DIALOG ===== */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 10000; display: none; align-items: center; justify-content: center; }
+    .modal-overlay.active { display: flex; }
+    .exit-box { background: var(--surface2); padding: 60px; border-radius: 30px; border: 2px solid var(--border); text-align: center; width: 700px; }
+    .exit-title { font-size: var(--tv-text-title); margin-bottom: 40px; font-weight: 800; }
+    .exit-btns { display: flex; justify-content: center; gap: 30px; }
+    .btn-modal { padding: 20px 60px; font-size: var(--tv-text-body); border-radius: 50px; border: 2px solid #fff; transition: all 0.2s; }
+    .btn-modal.focused { background: #fff; color: #000; transform: scale(1.1); box-shadow: 0 0 30px rgba(255,255,255,0.3); }
+
+    .card-number { position: absolute; left: -50px; bottom: -20px; font-size: 240px; font-weight: 900; color: transparent; -webkit-text-stroke: 3px rgba(255,255,255,0.1); z-index: -1; line-height: 1; }
+    .card.focused .card-number { -webkit-text-stroke: 3px var(--pink); opacity: 0.4; }
+  </style>
+</head>
+<body class="app-root">
+
+<div id="scr-loading" class="screen active">
+  <div class="loading-logo">ziii<span>TV</span></div>
+  <div class="progress-wrap">
+    <div id="loading-status" class="progress-text">Iniciando...</div>
+    <div class="progress-bar-bg"><div id="loading-bar" class="progress-bar-fill"></div></div>
+  </div>
+</div>
+
+<div class="sidebar">
+  <div class="sidebar-icon focused">🏠</div>
+  <div class="sidebar-icon">🎬</div>
+  <div class="sidebar-icon">📺</div>
+  <div class="sidebar-icon">❤</div>
+  <div class="sidebar-icon">⚙</div>
+</div>
+
+<div class="top-nav">
+  <div class="nav-item active">página principal</div>
+  <div class="nav-item">filmes</div>
+  <div class="nav-item">séries</div>
+  <div class="nav-item">canais</div>
+</div>
+
+<div id="scr-home" class="screen">
+  <div class="hero">
+    <div class="hero-title">
+      <div>visão</div>
+      <div class="pink">infinita</div>
+    </div>
+    <div id="hero-play" class="hero-btn focusable" id="hero-play">reproduzir agora</div>
+  </div>
+  <div class="home-rows" id="home-rows"></div>
+</div>
+
+<div id="scr-player" class="screen">
+  <video id="player-video" autoplay playsinline></video>
+  <div id="player-ui">
+    <div class="player-controls">
+      <div id="player-ch-name" class="player-title">Carregando...</div>
+      <div class="seek-bar-bg"><div id="seek-fill" class="seek-bar-fill"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-exit" class="modal-overlay">
+  <div class="exit-box">
+    <div class="exit-title">Deseja sair do ziiiTV?</div>
+    <div class="exit-btns">
+      <div id="exit-yes" class="btn-modal focusable">Sim</div>
+      <div id="exit-no" class="btn-modal focusable">Não</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ===== REGRA 1 — O D-PAD É DEUS =====
+  var KEYS = {
+    UP: 38, DOWN: 40, LEFT: 37, RIGHT: 39, OK: 13, BACK: 10009, EXIT: 10182,
+    PLAY: 415, PAUSE: 19, FF: 417, RW: 412, STOP: 413
+  };
+
+  // ===== REGRA 2 — FOCUS MANAGER =====
+  class FocusManager {
+    constructor() { this.current = null; this.history = []; }
+    setFocus(el) {
+      if (!el) return;
+      if (this.current) {
+        this.current.classList.remove('focused');
+        this.current.classList.remove('pressed');
+      }
+      this.current = el;
+      this.current.classList.add('focused');
+      this.current.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    }
+    push(el) { this.history.push(this.current); this.setFocus(el); }
+    pop() { var prev = this.history.pop(); if (prev) this.setFocus(prev); }
+  }
+  var fm = new FocusManager();
+
+  // ===== REGRA 8 — BACKSTACK =====
+  class BackStack {
+    constructor() { this.stack = ['home']; }
+    push(ctx) { this.stack.push(ctx); }
+    pop() {
+      if (this.stack.length <= 1) { showExitModal(); return; }
+      var ctx = this.stack.pop();
+      if (ctx === 'player') stopPlayer();
+    }
+  }
+  var bs = new BackStack();
+
+  // ===== REGRA 9 — PLAYER UI =====
+  var playerUI = {
+    timer: null, visible: false,
+    show: function() {
+      clearTimeout(this.timer);
+      document.getElementById('player-ui').classList.add('visible');
+      this.visible = true;
+      this.timer = setTimeout(() => this.hide(), 4000);
+    },
+    hide: function() {
+      document.getElementById('player-ui').classList.remove('visible');
+      this.visible = false;
+    }
+  };
+
+  function $(id) { return document.getElementById(id); }
+
+  function showExitModal() {
+    $('modal-exit').classList.add('active');
+    fm.push($('exit-no'));
+  }
+
+  function hideExitModal() {
+    $('modal-exit').classList.remove('active');
+    fm.pop();
+  }
+
+  // ===== REGRA 5 — ADAPT TO SCREEN =====
+  function adapt() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    document.body.style.transform = 'scale(' + s + ')';
+  }
+  window.onresize = adapt;
+  adapt();
+
+  // ===== APP LOGIC =====
+  var state = { cats: [], groups: {}, catIdx: 0, chIdx: 1, player: null };
+
+  function fetchM3U() {
+    var url = 'http://cdc55.cc/get.php?username=0357028521&password=82740&type=m3u_plus&output=ts';
+    setLoad(10, 'Baixando lista...');
+    fetch(url)
+      .then(r => r.text())
+      .then(txt => parseM3U(txt))
+      .catch(e => {
+        window.__ziiiDebug('FETCH ERROR: ' + e.message);
+        setLoad(0, 'ERRO: Sem conexão com o proxy (10.0.0.102:3000)');
+      });
+  }
+
+  function setLoad(p, t) {
+    $('loading-bar').style.width = p + '%';
+    $('loading-status').textContent = t;
+  }
+
+  function parseM3U(text) {
+    setLoad(40, 'Processando...');
+    var lines = text.split('\n'), grouped = {}, current = null;
+    var total = lines.length;
+    
+    var i = 0;
+    function chunk() {
+      var end = Math.min(i + 500, total);
+      for (; i < end; i++) {
+        var line = lines[i].trim();
+        if (line.indexOf('#EXTINF:') === 0) {
+          var n = line.match(/,(.+)$/), l = line.match(/tvg-logo="([^"]+)"/), g = line.match(/group-title="([^"]+)"/);
+          current = { name: n ? n[1].trim() : 'Canal', logo: l ? l[1] : '', group: g ? g[1] : 'OUTROS', url: '' };
+        } else if (line && line.indexOf('#') !== 0 && current) {
+          current.url = line;
+          if (!grouped[current.group]) grouped[current.group] = [];
+          grouped[current.group].push(current);
+          current = null;
+        }
+      }
+      setLoad(40 + (i/total)*50, 'Processando ('+Math.round((i/total)*100)+'%)');
+      if (i < total) setTimeout(chunk, 0);
+      else finishLoad(grouped);
+    }
+    chunk();
+  }
+
+  function finishLoad(data) {
+    state.cats = Object.keys(data);
+    state.groups = data;
+    render();
+    document.getElementById('scr-loading').style.display = 'none';
+    document.getElementById('scr-home').style.display = 'flex';
+    fm.setFocus($('hero-play'));
+  }
+
+  function render() {
+    var h = '';
+    state.cats.forEach((cat, ci) => {
+      var chs = state.groups[cat];
+      var isV = cat.toLowerCase().includes('filmes') || cat.toLowerCase().includes('series') || cat.toLowerCase().includes('vod');
+      var isTop10 = ci === 0;
+      var title = isTop10 ? 'top 10 <span>Brasil</span>' : cat.toLowerCase() + ' <span>em destaque</span>';
+      
+      h += `<div class="row" id="row-${ci}">
+        <div class="row-title">${title}</div>
+        <div class="cards-strip">`;
+      
+      // Renderizamos apenas os primeiros 40 para manter a performance da TV
+      chs.slice(0, 40).forEach((ch, chi) => {
+        var num = isTop10 ? `<div class="card-number">${chi + 1}</div>` : '';
+        var logo = ch.logo ? PROXY_BASE + '/img?url=' + encodeURIComponent(ch.logo) : '';
+        var badge = (chi % 5 === 0) ? '<div class="card-badge">NOVO</div>' : '';
+        
+        h += `<div class="card ${isV?'vertical':''} focusable" id="c-${ci}-${chi}">
+          ${num}
+          <div class="card-img-wrap">
+            ${logo ? '<img src="'+logo+'" style="width:100%;height:100%;object-fit:cover">' : '<div style="padding:40px;opacity:0.2;font-size:40px;text-align:center">'+ch.name[0]+'</div>'}
+            ${badge}
+          </div>
+          <div class="card-name">${ch.name}</div>
+        </div>`;
+      });
+      h += `</div></div>`;
+    });
+    $('home-rows').innerHTML = h;
+  }
+
+  window.onkeydown = function(e) {
+    var k = e.keyCode;
+    window.__ziiiDebug('KEY: ' + k);
+    
+    if (k === KEYS.BACK) { bs.pop(); e.preventDefault(); return; }
+    
+    if (state.player && bs.stack[bs.stack.length-1] === 'player') {
+      playerUI.show();
+      if (k === KEYS.OK || k === KEYS.PLAY || k === KEYS.PAUSE) {
+        var v = $('player-video');
+        v.paused ? v.play() : v.pause();
+      }
+      return;
+    }
+
+    if ($('modal-exit').classList.contains('active')) {
+      if (k === KEYS.LEFT) fm.setFocus($('exit-yes'));
+      if (k === KEYS.RIGHT) fm.setFocus($('exit-no'));
+      if (k === KEYS.OK) {
+        if (fm.current === $('exit-yes')) tizen.application.getCurrentApplication().exit();
+        else hideExitModal();
+      }
+      return;
+    }
+
+    if (!fm.current) return;
+    
+    // Grid Navigation
+    var curId = fm.current.id;
+    if (curId === 'hero-play') {
+      if (k === KEYS.DOWN) fm.setFocus($('c-0-0'));
+      if (k === KEYS.OK) play(state.groups[state.cats[0]][0]);
+    } else if (curId.startsWith('c-')) {
+      var p = curId.split('-'), r = parseInt(p[1]), c = parseInt(p[2]);
+      if (k === KEYS.DOWN && r < state.cats.length-1) fm.setFocus($('c-'+(r+1)+'-0'));
+      if (k === KEYS.UP) { if (r === 0) fm.setFocus($('hero-play')); else fm.setFocus($('c-'+(r-1)+'-0')); }
+      if (k === KEYS.RIGHT && c < state.groups[state.cats[r]].length-1) fm.setFocus($('c-'+r+'-'+(c+1)));
+      if (k === KEYS.LEFT && c > 0) fm.setFocus($('c-'+r+'-'+(c-1)));
+      if (k === KEYS.OK) play(state.groups[state.cats[r]][c]);
+    }
+  };
+
+  function play(ch) {
+    if (!ch) return;
+    $('player-ch-name').textContent = ch.name;
+    $('player-video').src = PROXY_BASE + '?url=' + encodeURIComponent(ch.url);
+    document.getElementById('scr-home').style.display = 'none';
+    document.getElementById('scr-player').style.display = 'flex';
+    bs.push('player');
+    playerUI.show();
+  }
+
+  function stopPlayer() {
+    $('player-video').src = '';
+    document.getElementById('scr-player').style.display = 'none';
+    document.getElementById('scr-home').style.display = 'flex';
+  }
+
+  // ===== REGRA 7 — LIFECYCLE =====
+  window.addEventListener('visibilitychange', function() {
+    var v = $('player-video');
+    if (document.hidden) { if (v) v.pause(); }
+    else { if (v && v.src) v.play(); }
+  });
+
+  window.onload = fetchM3U;
+</script>
+</body>
+</html>
