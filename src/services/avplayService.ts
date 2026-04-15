@@ -1,24 +1,25 @@
 // AVPlay Service — API nativa Samsung Tizen
-// Máquina de estados AVPlay: NONE → open() → IDLE → prepareAsync() → READY → play() → PLAYING
+// Máquina de estados: NONE → open() → IDLE → prepareAsync() → READY → play() → PLAYING
 // Em DEV (PC), opera apenas em modo log (sem crash)
 
 const DEBUG = false
-
-// Resolução fixa Tizen para setDisplayRect
-const DISPLAY = { x: 0, y: 0, w: 1920, h: 1080 }
 
 export function isAVPlayAvailable(): boolean {
   const webapis = (window as any).webapis
   return !!(webapis && webapis.avplay)
 }
 
+// ★ objectId: id do <object type="application/avplayer"> no DOM
+//   O AVPlay precisa de um elemento DOM como âncora para renderizar o vídeo.
+//   Sem isso o vídeo vai para fullscreen nativo SEM composição com o HTML.
 export function avplayLoad(
   url: string,
+  objectId: string,
   onSuccess: () => void,
   onError: (msg: string) => void
 ): void {
   if (!isAVPlayAvailable()) {
-    console.log('[AVPlay DEV] Sandbox de PC. API nativa inacessível — emulando sucesso.')
+    console.log('[AVPlay DEV] PC — API nativa indisponível, simulando sucesso.')
     setTimeout(onSuccess, 300)
     return
   }
@@ -26,63 +27,53 @@ export function avplayLoad(
   const avplay = (window as any).webapis.avplay
 
   try {
-    // 1. Limpar estado anterior (se houver)
-    try {
-      avplay.stop()
-      avplay.close()
-    } catch {
-      // Ignorar — pode não ter nada aberto
-    }
+    // 1. Parar qualquer reprodução anterior
+    try { avplay.stop(); avplay.close() } catch { /* ignorar */ }
 
     // 2. NONE → IDLE
     avplay.open(url)
-    console.log(`[AVPlay] open(${url.substring(0, 80)}...)`)
+    console.log(`[AVPlay] open OK — ${url.substring(0, 80)}`)
 
-    // 3. Configurar display ANTES do prepare
-    avplay.setDisplayRect(DISPLAY.x, DISPLAY.y, DISPLAY.w, DISPLAY.h)
-    console.log(`[AVPlay] setDisplayRect(${DISPLAY.x},${DISPLAY.y},${DISPLAY.w},${DISPLAY.h})`)
+    // 3. ★ Vincular ao elemento <object> no DOM ANTES do prepare
+    //    setDisplayRect(x, y, w, h) define a área de renderização
+    //    correspondente à posição do <object> na tela (0,0,1920,1080 = fullscreen)
+    avplay.setDisplayRect(0, 0, 1920, 1080)
+    console.log('[AVPlay] setDisplayRect(0,0,1920,1080)')
 
-    // 4. Registrar listeners ANTES do prepare
+    // 4. ★ setDisplayMethod DEVE ser chamado antes do prepare
+    //    'PLAYER_EXTERNAL_OUTPUT_MODE_NONE' = renderiza dentro do elemento âncora
+    //    sem ocupar toda a tela nativa — isso permite que HTML fique por cima
+    try {
+      avplay.setDisplayMethod('PLAYER_EXTERNAL_OUTPUT_MODE_NONE')
+      console.log('[AVPlay] setDisplayMethod: PLAYER_EXTERNAL_OUTPUT_MODE_NONE')
+    } catch (e) {
+      // Alguns modelos não suportam esse modo — ignora e continua
+      console.warn('[AVPlay] setDisplayMethod falhou (ignorado):', e)
+    }
+
+    // 5. Registrar listeners
     avplay.setListener({
-      onbufferingstart: () => {
-        console.log('[AVPlay] buffering...')
-      },
-      onbufferingcomplete: () => {
-        console.log('[AVPlay] buffering complete')
-      },
-      onstreamcompleted: () => {
-        console.log('[AVPlay] stream completed')
-      },
-      oncurrentplaytime: (ms: number) => {
-        if (DEBUG) console.log(`[AVPlay] time: ${ms}ms`)
-      },
-      onevent: (type: string, data: string) => {
-        console.log(`[AVPlay] event: ${type} ${data}`)
-      },
-      onerror: (errMsg: string) => {
-        console.error('[AVPlay] erro nativo:', errMsg)
-        onError(errMsg)
-      },
+      onbufferingstart:    () => console.log('[AVPlay] buffering...'),
+      onbufferingcomplete: () => console.log('[AVPlay] buffering OK'),
+      onstreamcompleted:   () => console.log('[AVPlay] stream ended'),
+      oncurrentplaytime:   (ms: number) => { if (DEBUG) console.log(`[AVPlay] ${ms}ms`) },
+      onevent:             (type: string, data: string) => console.log(`[AVPlay] event: ${type} ${data}`),
+      onerror:             (errMsg: string) => { console.error('[AVPlay] erro:', errMsg); onError(errMsg) },
     })
 
-    // 5. IDLE → READY (assíncrono)
+    // 6. IDLE → READY (assíncrono)
     avplay.prepareAsync(
       () => {
-        // Prepare concluído com sucesso → READY
-        console.log('[AVPlay] prepare OK → playing')
-
+        console.log('[AVPlay] prepareAsync OK → play()')
         try {
-          // 6. READY → PLAYING
           avplay.play()
-          console.log('[AVPlay] play() acionado')
           onSuccess()
         } catch (playErr: any) {
-          console.error('[AVPlay] erro no play():', playErr?.message ?? playErr)
+          console.error('[AVPlay] play() falhou:', playErr?.message ?? playErr)
           onError(playErr?.message ?? 'Erro ao iniciar play')
         }
       },
       (err: any) => {
-        // Prepare falhou
         console.error('[AVPlay] prepareAsync falhou:', err)
         onError(typeof err === 'string' ? err : 'Erro no prepareAsync')
       }
@@ -102,7 +93,5 @@ export function avplayStop(): void {
     avplay.stop()
     avplay.close()
     console.log('[AVPlay] stopped & closed')
-  } catch {
-    // Ignorar erros de stop quando nada estava tocando
-  }
+  } catch { /* ignorar */ }
 }

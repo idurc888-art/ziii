@@ -4,7 +4,7 @@ import { initPlayer, loadStream, destroyPlayer, selectPlayerBackend } from '../.
 import { avplayLoad, avplayStop, isAVPlayAvailable } from '../../services/avplayService'
 
 const ACCENT      = '#E50914'
-const OSD_TIMEOUT = 3000
+const OSD_TIMEOUT = 4000
 const DEBUG_KEYS  = true
 
 const KEYS = {
@@ -25,12 +25,12 @@ type PlayerStatus = 'loading' | 'playing' | 'paused' | 'error'
 type FocusZone   = 'controls' | 'none'
 
 interface State {
-  status:    PlayerStatus
-  error:     string | null
+  status:     PlayerStatus
+  error:      string | null
   osdVisible: boolean
-  focusZone: FocusZone
-  ctrlFocus: number
-  debugKeys: Array<{ code: number; key: string }>
+  focusZone:  FocusZone
+  ctrlFocus:  number
+  debugKeys:  Array<{ code: number; key: string }>
 }
 
 type Action =
@@ -68,10 +68,10 @@ interface Props {
 export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevChannel, onShakaReady }: Props) {
 
   const [state, dispatch] = useReducer(reducer, INITIAL)
-  const videoRef   = useRef<HTMLVideoElement>(null)
-  const onBackRef  = useRef(onBack)
-  const onNextRef  = useRef(onNextChannel)
-  const onPrevRef  = useRef(onPrevChannel)
+  const videoRef    = useRef<HTMLVideoElement>(null)
+  const onBackRef   = useRef(onBack)
+  const onNextRef   = useRef(onNextChannel)
+  const onPrevRef   = useRef(onPrevChannel)
   onBackRef.current  = onBack
   onNextRef.current  = onNextChannel
   onPrevRef.current  = onPrevChannel
@@ -80,10 +80,10 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
   const stateRef    = useRef(state)
   stateRef.current  = state
 
-  const backend = selectPlayerBackend(channel.url)
+  const backend  = selectPlayerBackend(channel.url)
   const isAVPlay = backend === 'avplay'
 
-  // ─ OSD
+  // ─ OSD timer
   const showOsd = useCallback(() => {
     dispatch({ type: 'SET_OSD', visible: true })
     if (osdTimerRef.current) clearTimeout(osdTimerRef.current)
@@ -103,15 +103,24 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
   // ─ Player lifecycle
   useEffect(() => {
     dispatch({ type: 'SET_STATUS', status: 'loading' })
+
     if (backend === 'avplay') {
-      if (!isAVPlayAvailable()) { dispatch({ type: 'SET_STATUS', status: 'playing' }); return }
+      if (!isAVPlayAvailable()) {
+        // PC/emulador — sem AVPlay real, simula sucesso
+        setTimeout(() => dispatch({ type: 'SET_STATUS', status: 'playing' }), 300)
+        return
+      }
+      // ★ Passa o id do <object> para o avplayService saber qual elemento usar
       avplayLoad(
         channel.url,
+        'av-player',                  // ← id do <object> no DOM
         () => dispatch({ type: 'SET_STATUS', status: 'playing' }),
         (msg) => dispatch({ type: 'SET_STATUS', status: 'error', error: msg })
       )
       return () => avplayStop()
     }
+
+    // Shaka
     const video = videoRef.current
     if (!video) return
     initPlayer(video)
@@ -157,7 +166,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         case KEYS.CH_UP:               e.preventDefault(); onNextRef.current?.(); return
         case KEYS.CH_DOWN:             e.preventDefault(); onPrevRef.current?.(); return
         case KEYS.PLAY:                e.preventDefault(); try { avplay ? avplay.play()  : videoRef.current?.play()  } catch (_) {}; dispatch({ type: 'SET_STATUS', status: 'playing' }); return
-        case KEYS.PAUSE:               e.preventDefault(); try { avplay ? avplay.pause() : videoRef.current?.pause() } catch (_) {}; dispatch({ type: 'SET_STATUS', status: 'paused'  }); if (osdTimerRef.current) clearTimeout(osdTimerRef.current); dispatch({ type: 'SET_OSD', visible: true }); return
+        case KEYS.PAUSE:               e.preventDefault(); try { avplay ? avplay.pause() : videoRef.current?.pause() } catch (_) {}; dispatch({ type: 'SET_STATUS', status: 'paused' }); if (osdTimerRef.current) clearTimeout(osdTimerRef.current); dispatch({ type: 'SET_OSD', visible: true }); return
         case KEYS.PLAY_PAUSE: case KEYS.OK:
           e.preventDefault()
           if (s.osdVisible && s.focusZone === 'controls') { doToggle() }
@@ -201,42 +210,82 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
     { icon: '⚙️', label: 'Config',     idx: CTRL.SETTINGS },
   ]
 
+  // ★ ESTRUTURA CORRETA (padrão oficial Samsung TizenTVApps):
+  //
+  //   <div root background=#000>
+  //     <object id="av-player" type="application/avplayer" />   ← layer nativo
+  //     <video id="shaka-player" />                             ← só para Shaka
+  //     <div OSD />                                             ← SIBLING, não filho do object
+  //     <div erro />
+  //     <div debug />
+  //   </div>
+  //
+  // O OSD precisa ser IRMÃO do <object>, não filho nem encapsulado.
+  // O background do root DEVE ser #000 sólido — transparent mata o layer HTML no Tizen.
+
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      // ★ rgba(0,0,0,0.01) em vez de transparent — o Tizen só compõe HTML sobre
-      // o layer AVPlay quando o elemento raiz tem cor/opacidade definida.
-      // transparent puro = o browser pula a composição e o OSD some.
-      background: isAVPlay ? 'rgba(0,0,0,0.01)' : '#000',
+      background: '#000',           // ★ SÓLIDO — transparent desativa composição HTML no Tizen
       color: '#fff',
       fontFamily: "'Outfit', 'Helvetica Neue', sans-serif",
-      transform: 'translateZ(0)', willChange: 'transform',
+      overflow: 'hidden',
     }}>
 
-      {/* vídeo Shaka */}
-      {!isAVPlay && (
-        <video ref={videoRef} id="av-player" autoPlay playsInline
-          style={{ width: '100%', height: '100%', display: 'block', transform: 'translateZ(0)' }} />
+      {/* ★ AVPlay: <object> com id fixo no DOM — o avplayService usa esse elemento
+           como âncora de display. Posicionado absolute 0,0 fullscreen.
+           O OSD ficará como SIBLING logo abaixo, NÃO dentro deste elemento. */}
+      {isAVPlay && (
+        <object
+          id="av-player"
+          type="application/avplayer"
+          style={{
+            position: 'absolute',
+            left: 0, top: 0,
+            width: '100%', height: '100%',
+            zIndex: 1,
+          }}
+        />
       )}
 
-      {/* ★ OSD — z-index 10 garante que fica ACIMA do layer AVPlay */}
+      {/* Shaka: <video> normal */}
+      {!isAVPlay && (
+        <video
+          ref={videoRef}
+          id="shaka-player"
+          autoPlay
+          playsInline
+          style={{
+            position: 'absolute',
+            left: 0, top: 0,
+            width: '100%', height: '100%',
+            display: 'block',
+            zIndex: 1,
+          }}
+        />
+      )}
+
+      {/* ★ OSD — SIBLING do <object>, zIndex > 1, visibility em vez de opacity
+           O Tizen colapsa layers com opacity:0 — usar visibility:hidden é seguro */}
       <div style={{
         position: 'absolute', inset: 0,
         zIndex: 10,
         pointerEvents: 'none',
-        opacity:   osdVisible ? 1 : 0,
-        transform: osdVisible ? 'translateY(0)' : 'translateY(20px)',
-        transition: 'opacity 300ms ease, transform 300ms ease',
-        willChange: 'opacity, transform',
+        // ★ visibility em vez de opacity — no Tizen, opacity:0 pode colapsar o layer
+        visibility: osdVisible ? 'visible' : 'hidden',
+        transition: 'visibility 0ms',
       }}>
 
         {/* TOP BAR */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: 160,
-          background: 'linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, transparent 100%)',
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.92) 0%, transparent 100%)',
           display: 'flex', alignItems: 'flex-start',
           padding: '32px 56px 0', gap: 20,
           zIndex: 11,
+          // ★ fade via opacity interno — o container usa visibility
+          opacity: osdVisible ? 1 : 0,
+          transition: 'opacity 300ms ease',
         }}>
           <div style={{
             width: 52, height: 52, borderRadius: '50%', flexShrink: 0,
@@ -256,7 +305,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center', flexShrink: 0,
             background: ACCENT, padding: '7px 18px', borderRadius: 6,
-            fontSize: 16, fontWeight: 900, letterSpacing: 1.5,
+            fontSize: 18, fontWeight: 900, letterSpacing: 1.5,
           }}>
             <div style={{
               width: 8, height: 8, borderRadius: '50%', background: '#fff',
@@ -266,7 +315,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           </div>
         </div>
 
-        {/* SPINNER */}
+        {/* SPINNER loading */}
         {status === 'loading' && (
           <div style={{
             position: 'absolute', inset: 0, zIndex: 12,
@@ -289,6 +338,8 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           height: focusZone === 'controls' ? 8 : 4,
           background: 'rgba(255,255,255,0.2)', borderRadius: 4,
           transition: 'height 200ms ease-out', zIndex: 11,
+          opacity: osdVisible ? 1 : 0,
+          transitionProperty: 'height, opacity',
         }}>
           <div style={{ width: '35%', height: '100%', background: ACCENT, borderRadius: 4, position: 'relative' }}>
             <div style={{
@@ -301,16 +352,16 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           </div>
         </div>
 
-        {/* BOTTOM ZONE */}
+        {/* BOTTOM ZONE — gradiente + 7 botões */}
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0, height: 300,
           background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, transparent 100%)',
           display: 'flex', flexDirection: 'column',
           justifyContent: 'flex-end', padding: '0 56px 40px',
           zIndex: 11,
+          opacity: osdVisible ? 1 : 0,
+          transition: 'opacity 300ms ease',
         }}>
-
-          {/* 7 botões */}
           <div style={{ display: 'flex', justifyContent: 'center', gap: 80, alignItems: 'center' }}>
             {CTRL_BTNS.map(({ icon, label, idx }) => {
               const focused = focusZone === 'controls' && ctrlFocus === idx
@@ -329,12 +380,11 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
                   opacity: focused ? 1 : 0.65,
                   transform: focused ? 'scale(1.18) translateZ(0)' : 'scale(1) translateZ(0)',
                   transition: 'all 150ms cubic-bezier(0.4, 0, 0.2, 1)',
-                  willChange: 'transform',
                   boxShadow: focused && isPlay ? '0 0 40px rgba(229,9,20,0.7)' : 'none',
                 }}>
                   <span style={{ lineHeight: 1 }}>{icon}</span>
                   {focused && (
-                    <span style={{ fontSize: 13, marginTop: 4, opacity: 0.85, whiteSpace: 'nowrap', fontWeight: 600 }}>
+                    <span style={{ fontSize: 18, marginTop: 4, opacity: 0.85, whiteSpace: 'nowrap', fontWeight: 600 }}>
                       {label}
                     </span>
                   )}
@@ -342,9 +392,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
               )
             })}
           </div>
-
-          {/* dicas */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 48, marginTop: 20, fontSize: 16, opacity: 0.4 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 48, marginTop: 20, fontSize: 18, opacity: 0.4 }}>
             <span>←→ navegar</span>
             <span>OK selecionar</span>
             <span>BACK voltar</span>
@@ -353,7 +401,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         </div>
       </div>
 
-      {/* ERRO */}
+      {/* ERRO — zIndex alto para aparecer sobre tudo */}
       {status === 'error' && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 20,
@@ -377,11 +425,11 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           background: 'rgba(0,0,0,0.88)', border: '2px solid rgba(255,220,0,0.6)',
           borderRadius: 12, padding: '14px 20px', minWidth: 250,
         }}>
-          <div style={{ fontSize: 16, fontWeight: 900, color: '#ffd700', marginBottom: 10 }}>🔍 DEBUG KEYS</div>
+          <div style={{ fontSize: 18, fontWeight: 900, color: '#ffd700', marginBottom: 10 }}>🔍 DEBUG KEYS</div>
           {debugKeys.length === 0
-            ? <div style={{ fontSize: 16, opacity: 0.45 }}>aperte qualquer botão...</div>
+            ? <div style={{ fontSize: 18, opacity: 0.45 }}>aperte qualquer botão...</div>
             : debugKeys.map((k, i) => (
-              <div key={i} style={{ fontSize: 16, opacity: i === 0 ? 1 : 0.35, fontFamily: 'monospace', lineHeight: 1.8 }}>
+              <div key={i} style={{ fontSize: 18, opacity: i === 0 ? 1 : 0.35, fontFamily: 'monospace', lineHeight: 1.8 }}>
                 <b style={{ color: '#00ff88' }}>{k.code}</b>
                 {k.key && k.key !== 'Unidentified' && <span style={{ color: '#88ccff', marginLeft: 8 }}>({k.key})</span>}
               </div>
