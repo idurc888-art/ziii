@@ -75,7 +75,7 @@
 
 ## Estado do Projeto
 
-- [ ] Camada 1: Playlist Engine (Web Worker + IndexedDB)
+- [x] Camada 1: Playlist Engine (Web Worker + IndexedDB) — CONCLUÍDA
 - [ ] Camada 2: Player (Shaka + AVPlay fallback)
 - [ ] Camada 3: Interface Visual
 
@@ -88,6 +88,17 @@
 - **Virtualização**: 10k cards no DOM = crash garantido em TVs entry-level
 - **AVPlay fallback**: garante funcionamento em Tizen < 4.0 sem MSE
 - **Throttle 200ms**: Tizen repete keydown a ~30ms — sem throttle pula 6+ itens
+- **Build target es2015 + chrome56**: Tizen 4.0 usa Chromium 56 — não suporta ES modules nem `type="module"`
+- **Plugin tizen-compat no vite.config.ts**: Vite 8/Rolldown não permite desabilitar `type="module"` via config — plugin `closeBundle` remove o atributo do `dist/index.html` após o build
+- **`type="module"` causa loader infinito na TV**: script não carrega silenciosamente, app fica preso no splash
+  - `.m3u8` / `.mpd` → Shaka Player
+  - `.ts` / desconhecido → AVPlay (nativo Samsung)
+  - Função `selectPlayerBackend(url)` em `playerService.ts` centraliza essa decisão
+- **Erro 7000 do Shaka**: streams da M3U com URL direta (`.ts`, sem manifesto HLS/DASH) falham no Shaka — não invalida a arquitetura, confirma que AVPlay é necessário para esses casos na TV
+- **detectStreamType()**: helper para identificar `.m3u8` (HLS), `.mpd` (DASH) ou `unknown` antes de tentar carregar
+- **focus() com delay 50ms**: ao montar SettingsScreen, o foco no input deve ser adiado para não capturar a tecla que abriu a tela (ex: M/Menu)
+- **document.body.focus() ao voltar**: ao desmontar SettingsScreen/PlayerScreen, devolver foco ao body garante que o listener global da HomeScreen continue recebendo eventos de teclado
+- **src/types/channel.ts**: tipo Channel centralizado — não duplicar em data/ e store/
 
 ---
 
@@ -108,25 +119,28 @@
 - [x] Passo 3 — src/data/mockChannels.ts — 20 canais, 3 grupos
 - [x] Passo 4 — src/store/channelsStore.ts — Zustand com loadMock
 - [x] Passo 5 — src/App.tsx — controle de telas + listener Back
-- [ATUAL] Passo 6 — HomeScreen.tsx esqueleto: grupos + canais em divs simples, navegação D-pad funcional com throttle, ENTER loga canal no console
-- [ ] Passo 7 — Conectar HomeScreen no App.tsx: renderiza HomeScreen quando screen === 'home', ao pressionar ENTER muda para screen === 'player' passando o canal
-- [ ] Passo 8 — PlayerScreen.tsx esqueleto: recebe o canal, mostra nome + URL na tela, botão Back volta para home
-- [ ] Passo 9 — SettingsScreen.tsx esqueleto: campo de texto para URL da lista, botão salvar (só loga por enquanto)
-- [ ] Passo 10 — Testar navegação completa no browser: home → player → back → home → settings → back
+- [x] Passo 6 — HomeScreen.tsx esqueleto: grupos + canais em divs simples, navegação D-pad funcional com throttle, ENTER loga canal no console
+- [x] Passo 7 — Conectar HomeScreen no App.tsx: renderiza HomeScreen quando screen === 'home', ao pressionar ENTER muda para screen === 'player' passando o canal
+- [x] Passo 8 — PlayerScreen.tsx esqueleto: recebe o canal, mostra nome + URL na tela, botão Back volta para home
+- [x] Passo 9 — SettingsScreen.tsx esqueleto: campo de texto para URL da lista, botão salvar (só loga por enquanto)
+- [x] Passo 10 — Navegação completa testada no browser: home → player → back → home → settings → back
 
-### FASE 2 — Playlist Engine real
-- [ ] Passo 11 — Instalar @iptv/playlist e idb
-- [ ] Passo 12 — Criar src/workers/playlistWorker.ts: recebe URL via postMessage, faz fetch, parseia M3U, retorna groups via postMessage
-- [ ] Passo 13 — Criar src/services/playlistService.ts: gerencia o Worker, salva resultado no IndexedDB, carrega do cache se já existe
+### FASE 2 — Playlist Engine real — CONCLUÍDA
+- [x] Passo 11 — Instalar @iptv/playlist e idb
+- [x] Passo 12 — Criar src/workers/playlistWorker.ts: recebe URL via postMessage, faz fetch, parseia M3U, retorna groups via postMessage
+- [x] Passo 13 — Criar src/services/playlistService.ts: gerencia o Worker, salva resultado no IndexedDB, carrega do cache se já existe
+- [x] Passo 14 — Adicionar loadFromUrl(url: string) no store Zustand + inicialização automática no App.tsx (localStorage → IndexedDB → mock fallback)
+- [x] Passo 15 — Conectar SettingsScreen com loadFromUrl: salva URL no localStorage, dispara o Worker, feedback de status na tela
+- [x] Passo 16 — Testado com URL M3U real: lista carrega, grupos aparecem, cache IndexedDB funciona (F5 instantâneo)
 - [ ] Passo 14 — Adicionar loadFromUrl(url: string) no store Zustand, substituindo loadMock
 - [ ] Passo 15 — Conectar SettingsScreen com loadFromUrl: salva URL no localStorage, dispara o Worker
 - [ ] Passo 16 — Testar com URL M3U real: lista carrega, grupos aparecem, cache funciona
 
-### FASE 3 — Player
-- [ ] Passo 17 — Instalar Shaka Player
-- [ ] Passo 18 — Criar src/services/playerService.ts: singleton Shaka, configuração de buffer otimizada para TV
-- [ ] Passo 19 — Detectar suporte a MSE — se não suporta, inicializa AVPlay Samsung como fallback
-- [ ] Passo 20 — PlayerScreen real: <video> element, Shaka carrega a URL do canal, play automático
+### FASE 3 — Player — ATUAL
+- [x] Passo 17 — Instalar Shaka Player
+- [x] Passo 18 — Criar src/services/playerService.ts: singleton Shaka, configuração de buffer otimizada para TV
+- [x] Passo 19 — Detectar suporte a MSE + seleção automática de backend (selectPlayerBackend) + stub AVPlay tipado em src/services/avplayService.ts
+- [ATUAL] Passo 20 — PlayerScreen real: <video> element, Shaka carrega HLS/DASH, AVPlay carrega .ts — testado no browser, AVPlay real pendente de validação na TV
 - [ ] Passo 21 — Controles do player via D-pad: PLAY/PAUSE, FF, RW, STOP, volume
 - [ ] Passo 22 — Testar player com canal real na TV
 
