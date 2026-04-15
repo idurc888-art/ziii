@@ -23,9 +23,8 @@ type DashboardView = 'home' | 'movies' | 'series' | 'live'
 // ─── Design tokens ───────────────────────────────────────────────────────────
 const ACCENT    = '#ff006e'
 const GLOW      = 'rgba(255,0,110,0.45)'
-const TOPBAR_H  = 56          // px
-const HERO_FULL = '100vh'     // banner ocupa tela toda
-const HERO_MINI = 180         // px quando conteúdo está focado
+const TOPBAR_H  = 56
+const HERO_MINI = 190   // px quando conteúdo está focado
 
 // ─── Nav links ───────────────────────────────────────────────────────────────
 const NAV: Array<{ label: string; view: DashboardView }> = [
@@ -35,7 +34,7 @@ const NAV: Array<{ label: string; view: DashboardView }> = [
   { label: 'MINHAS TVS', view: 'home'   },
 ]
 
-// ─── Fallback slides (antes do TMDB carregar) ────────────────────────────────
+// ─── Fallback slides ─────────────────────────────────────────────────────────
 const FALLBACK_SLIDES = [
   { title: 'ziiiTV',    sub: 'o melhor player',       desc: 'Milhares de canais ao vivo, filmes e séries.' },
   { title: 'invasão',   sub: 'cerebral · ziiiTV',     desc: 'O melhor conteúdo de filmes e séries ao vivo.' },
@@ -110,7 +109,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     )
   }, [previewCh, contentRow, rows, liveCache])
 
-  // ── Refs for closure-safe keydown ─────────────────────────────────────────
+  // ── Refs ──────────────────────────────────────────────────────────────────
   const R = {
     zone:        useRef(zone),
     slide:       useRef(slide),
@@ -165,7 +164,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       if (!(BACK || OK || UP || DOWN || LEFT || RIGHT)) return
       e.preventDefault()
 
-      // ── exit dialog ────────────────────────────────────────────────────────
       if (R.showExit.current) {
         if (LEFT)  setExitFocus(0)
         if (RIGHT) setExitFocus(1)
@@ -180,24 +178,21 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       const allR = R.rows.current
       const ms   = R.maxSlides.current
 
-      // ── back ────────────────────────────────────────────────────────────
       if (BACK) {
-        if (z === 'topbar') { setShowExit(true); setExitFocus(0) }
-        if (z === 'hero')   setZone('topbar')
+        if (z === 'topbar')  { setShowExit(true); setExitFocus(0) }
+        if (z === 'hero')    setZone('topbar')
         if (z === 'content') setZone('hero')
         return
       }
 
-      // ── topbar ──────────────────────────────────────────────────────────
       if (z === 'topbar') {
         if (RIGHT) setNavIdx(i => Math.min(i + 1, NAV.length - 1))
         if (LEFT)  setNavIdx(i => Math.max(i - 1, 0))
         if (DOWN)  setZone('hero')
-        if (OK) { const v = NAV[R.navIdx.current]; if (v) setActiveView(v.view) }
+        if (OK)    { const v = NAV[R.navIdx.current]; if (v) setActiveView(v.view) }
         return
       }
 
-      // ── hero ─────────────────────────────────────────────────────────────
       if (z === 'hero') {
         if (UP)    setZone('topbar')
         if (DOWN)  { setZone('content'); setContentRow(0) }
@@ -210,7 +205,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         return
       }
 
-      // ── content ──────────────────────────────────────────────────────────
       if (z === 'content') {
         if (UP)   { rw === 0 ? setZone('hero') : setContentRow(rw - 1) }
         if (DOWN) { if (rw < allR.length - 1) setContentRow(rw + 1) }
@@ -250,15 +244,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     return { backdrop: '', poster: '', title: fb.title, sub: fb.sub, rating: 0, year: '', ch: null }
   }
 
-  const centerData = getSlide(slide)
-
-  // ── Hero height ───────────────────────────────────────────────────────────
+  const centerData   = getSlide(slide)
   const heroExpanded = zone !== 'content'
-  const heroH        = heroExpanded ? HERO_FULL : `${HERO_MINI}px`
-
-  // ── Content scroll ────────────────────────────────────────────────────────
-  const ROW_H         = 280
-  const contentOffset = zone === 'content' ? -(contentRow * ROW_H) : 0
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -272,24 +259,174 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     }}>
 
       {/* ══════════════════════════════════════════════════════════════════
-          TOPBAR — flutua sobre o banner
+          HERO — fullscreen, ocupa a tela toda quando expandido
+      ══════════════════════════════════════════════════════════════════ */}
+      <div style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0,
+        height: heroExpanded ? '100vh' : HERO_MINI,
+        transition: 'height 500ms cubic-bezier(0.4,0,0.2,1)',
+        overflow: 'hidden',
+        background: '#000',
+      }}>
+
+        {/* ── imagem de fundo fullscreen ─────────────────────────────── */}
+        <img
+          key={slide}
+          src={centerData.backdrop || centerData.poster || 'hero-alien.png'}
+          alt={centerData.title}
+          style={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center top',
+            animation: 'fadeIn 600ms ease',
+          }}
+          onError={ev => { (ev.target as HTMLImageElement).src = 'hero-alien.png' }}
+        />
+
+        {/* ── gradientes sobre a imagem ──────────────────────────────── */}
+        {/* topo → escurece para a topbar */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, height: 160,
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, transparent 100%)',
+          zIndex: 2,
+        }} />
+        {/* fundo → escurece para os textos */}
+        <div style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%',
+          background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.45) 60%, transparent 100%)',
+          zIndex: 2,
+        }} />
+        {/* lateral esquerda → degrade suave */}
+        <div style={{
+          position: 'absolute', top: 0, left: 0, bottom: 0, width: '50%',
+          background: 'linear-gradient(to right, rgba(0,0,0,0.6) 0%, transparent 100%)',
+          zIndex: 2,
+        }} />
+
+        {/* ── info do slide — canto inferior esquerdo ────────────────── */}
+        {heroExpanded && (
+          <div style={{
+            position: 'absolute', bottom: 64, left: 72,
+            zIndex: 10, maxWidth: 640,
+          }}>
+            {/* badge ao vivo */}
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 7,
+              background: ACCENT, padding: '4px 14px 4px 10px',
+              borderRadius: 5, marginBottom: 18,
+              fontSize: 12, fontWeight: 900, letterSpacing: 2.5, textTransform: 'uppercase',
+            }}>
+              <div style={{
+                width: 7, height: 7, borderRadius: '50%', background: '#fff',
+                animation: 'pulse 1.5s ease-in-out infinite',
+              }} />
+              AO VIVO
+            </div>
+
+            {/* título grande */}
+            <div style={{
+              fontSize: 'clamp(32px, 4.5vw, 72px)',
+              fontWeight: 900,
+              lineHeight: 1.0,
+              letterSpacing: '-0.03em',
+              textShadow: '0 4px 24px rgba(0,0,0,0.85)',
+              marginBottom: 14,
+              textTransform: 'lowercase',
+            }}>
+              {centerData.title}
+            </div>
+
+            {/* meta */}
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 24 }}>
+              {centerData.rating > 0 && (
+                <span style={{ fontSize: 18, color: '#fbbf24', fontWeight: 700 }}>⭐ {centerData.rating.toFixed(1)}</span>
+              )}
+              {centerData.year && <span style={{ fontSize: 18, color: 'rgba(255,255,255,0.65)' }}>{centerData.year}</span>}
+              {centerData.sub  && (
+                <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: 1.5 }}>
+                  {centerData.sub}
+                </span>
+              )}
+            </div>
+
+            {/* botão play — só quando hero focado */}
+            {zone === 'hero' && (
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 12,
+                background: '#fff', color: '#000',
+                padding: '14px 36px', borderRadius: 8,
+                fontSize: 18, fontWeight: 900,
+                boxShadow: `0 6px 32px rgba(0,0,0,0.7), 0 0 0 3px ${ACCENT}`,
+              }}>
+                ▶ Assistir agora
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── dots ───────────────────────────────────────────────────── */}
+        {heroExpanded && maxSlides > 1 && (
+          <div style={{
+            position: 'absolute', bottom: 24, right: 72,
+            display: 'flex', gap: 6, zIndex: 10,
+          }}>
+            {Array.from({ length: Math.min(maxSlides, 10) }).map((_, i) => (
+              <div key={i} style={{
+                width: slide === i ? 28 : 6, height: 6, borderRadius: 3,
+                background: slide === i ? ACCENT : 'rgba(255,255,255,0.28)',
+                transition: 'all 300ms ease',
+              }} />
+            ))}
+          </div>
+        )}
+
+        {/* ── setas de navegação ─────────────────────────────────────── */}
+        {zone === 'hero' && heroExpanded && (
+          <>
+            <div style={arrowStyle('left')}>‹</div>
+            <div style={arrowStyle('right')}>›</div>
+          </>
+        )}
+
+        {/* ── foco border quando hero está ativo ─────────────────────── */}
+        {zone === 'hero' && heroExpanded && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 5,
+            boxShadow: `inset 0 0 0 3px ${ACCENT}`,
+            pointerEvents: 'none',
+            borderRadius: 0,
+          }} />
+        )}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          TOPBAR — flutua sobre o hero
       ══════════════════════════════════════════════════════════════════ */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0,
         height: TOPBAR_H,
         display: 'flex', alignItems: 'center',
-        padding: '0 60px', gap: 40,
-        background: 'linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 100%)',
+        padding: '0 72px', gap: 48,
         zIndex: 100,
         pointerEvents: 'none',
       }}>
+        {/* logo */}
+        <div style={{
+          fontSize: 22, fontWeight: 900, letterSpacing: -0.5,
+          color: '#fff', marginRight: 16,
+        }}>
+          ziii<span style={{ color: ACCENT }}>TV</span>
+        </div>
+
         {NAV.map((link, i) => {
           const active  = zone === 'topbar' && navIdx === i
           const current = activeView === link.view
           return (
             <span key={i} style={{
-              fontSize: 20, fontWeight: 900, letterSpacing: 1.5,
-              color: active ? '#fff' : current ? ACCENT : 'rgba(255,255,255,0.5)',
+              fontSize: 18, fontWeight: 800, letterSpacing: 1.5,
+              color: active ? '#fff' : current ? ACCENT : 'rgba(255,255,255,0.55)',
               borderBottom: active ? `2px solid #fff` : current ? `2px solid ${ACCENT}` : '2px solid transparent',
               paddingBottom: 2,
               transition: 'all 200ms',
@@ -302,316 +439,150 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════
-          HERO — ocupa a tela TODA quando expandido
-      ══════════════════════════════════════════════════════════════════ */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0,
-        height: heroH,
-        transition: 'height 500ms cubic-bezier(0.4,0,0.2,1)',
-        overflow: 'hidden',
-        background: '#000',
-      }}>
-
-        {/* ── carrossel de cards ─────────────────────────────────────── */}
-        <div style={{ position: 'absolute', inset: 0 }}>
-          {[-2, -1, 0, 1, 2].map(offset => {
-            const d        = getSlide(slide + offset)
-            const isCenter = offset === 0
-            const abs      = Math.abs(offset)
-            const scale    = isCenter ? 1 : abs === 1 ? 0.87 : 0.74
-            const opacity  = isCenter ? 1 : abs === 1 ? 0.55 : 0.25
-            const zIdx     = isCenter ? 10 : abs === 1 ? 5 : 2
-
-            // Largura do card central = 72% da tela → deixa ~14% de cada lado visível
-            const CW   = 72   // % da largura total para o card central
-            const STEP = CW * 0.78 // passo lateral em %
-            const xPct = offset * STEP
-
-            return (
-              <div
-                key={`${slide}-${offset}`}
-                style={{
-                  position: 'absolute',
-                  top: '50%', left: '50%',
-                  width: `${CW}%`,
-                  // altura proporcional 16/9 ou fixo ~75vh
-                  height: heroExpanded ? '75vh' : '100%',
-                  transform: `translate(calc(-50% + ${xPct}vw), -50%) scale(${scale})`,
-                  transformOrigin: 'center center',
-                  opacity,
-                  zIndex: zIdx,
-                  borderRadius: 14,
-                  overflow: 'hidden',
-                  transition: 'all 450ms cubic-bezier(0.34,1.2,0.64,1)',
-                  boxShadow: isCenter && zone === 'hero'
-                    ? `0 0 0 3px ${ACCENT}, 0 40px 100px rgba(0,0,0,0.9), 0 0 80px ${GLOW}`
-                    : isCenter
-                    ? '0 20px 80px rgba(0,0,0,0.8)'
-                    : 'none',
-                  cursor: isCenter ? 'pointer' : 'default',
-                }}
-                onClick={() => {
-                  if (!isCenter) return
-                  const ch = d.ch
-                  if (ch) { recordPlay(ch.name, ch.group); onPlay(ch) }
-                }}
-              >
-                {/* imagem de fundo */}
-                <img
-                  src={d.backdrop || d.poster || 'hero-alien.png'}
-                  alt={d.title}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                  onError={ev => { (ev.target as HTMLImageElement).src = 'hero-alien.png' }}
-                />
-
-                {/* overlay escurecimento */}
-                <div style={{
-                  position: 'absolute', inset: 0,
-                  background: isCenter
-                    ? 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.15) 55%, transparent 100%)'
-                    : 'rgba(0,0,0,0.52)',
-                  transition: 'background 400ms',
-                }} />
-
-                {/* info — só no card central e quando hero expandido */}
-                {isCenter && heroExpanded && (
-                  <div style={{
-                    position: 'absolute', bottom: 0, left: 0, right: 0,
-                    padding: '32px 40px',
-                    display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
-                    gap: 24,
-                  }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {/* badge */}
-                      <div style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 7,
-                        background: ACCENT, padding: '4px 12px 4px 10px',
-                        borderRadius: 5, marginBottom: 14,
-                        fontSize: 12, fontWeight: 900, letterSpacing: 2.5, textTransform: 'uppercase',
-                      }}>
-                        <div style={{
-                          width: 7, height: 7, borderRadius: '50%', background: '#fff',
-                          animation: 'pulse 1.5s ease-in-out infinite',
-                        }} />
-                        AO VIVO
-                      </div>
-
-                      {/* título */}
-                      <div style={{
-                        fontSize: 'clamp(28px,3.2vw,52px)', fontWeight: 900,
-                        lineHeight: 1.05, letterSpacing: '-0.03em',
-                        textShadow: '0 3px 16px rgba(0,0,0,0.9)',
-                        marginBottom: 10,
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        maxWidth: '100%',
-                      }}>
-                        {centerData.title}
-                      </div>
-
-                      {/* meta */}
-                      <div style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 15 }}>
-                        {centerData.rating > 0 && (
-                          <span style={{ color: '#fbbf24', fontWeight: 700 }}>⭐ {centerData.rating.toFixed(1)}</span>
-                        )}
-                        {centerData.year && <span style={{ color: 'rgba(255,255,255,0.6)' }}>{centerData.year}</span>}
-                        {centerData.sub  && <span style={{ color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', fontSize: 13, letterSpacing: 1 }}>{centerData.sub}</span>}
-                      </div>
-                    </div>
-
-                    {/* botão play */}
-                    {zone === 'hero' && (
-                      <div style={{
-                        background: '#fff', color: '#000',
-                        padding: '14px 32px', borderRadius: 8,
-                        fontSize: 16, fontWeight: 900,
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        boxShadow: '0 6px 24px rgba(0,0,0,0.6)',
-                        flexShrink: 0, whiteSpace: 'nowrap',
-                      }}>
-                        ▶ Assistir agora
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* ── setas ──────────────────────────────────────────────────── */}
-        {zone === 'hero' && heroExpanded && (
-          <>
-            <div style={arrowStyle('left')}>‹</div>
-            <div style={arrowStyle('right')}>›</div>
-          </>
-        )}
-
-        {/* ── dots ───────────────────────────────────────────────────── */}
-        {heroExpanded && maxSlides > 1 && (
-          <div style={{
-            position: 'absolute', bottom: 22, left: 0, right: 0,
-            display: 'flex', justifyContent: 'center', gap: 6, zIndex: 20,
-          }}>
-            {Array.from({ length: Math.min(maxSlides, 10) }).map((_, i) => (
-              <div key={i} style={{
-                width: slide === i ? 26 : 6, height: 6, borderRadius: 3,
-                background: slide === i ? ACCENT : 'rgba(255,255,255,0.28)',
-                transition: 'all 300ms ease',
-              }} />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ══════════════════════════════════════════════════════════════════
           ROWS — surgem por baixo quando hero encolhe
       ══════════════════════════════════════════════════════════════════ */}
       <div style={{
         position: 'absolute',
         top: heroExpanded ? '100vh' : HERO_MINI,
         left: 0, right: 0, bottom: 0,
-        overflow: 'hidden',
+        overflowY: 'auto',
+        overflowX: 'hidden',
         transition: 'top 500ms cubic-bezier(0.4,0,0.2,1)',
-        background: '#000',
+        background: 'linear-gradient(to bottom, #000 0%, #0a0a0a 100%)',
+        scrollbarWidth: 'none',
       }}>
-        <div style={{
-          transform: `translateY(${contentOffset}px)`,
-          transition: 'transform 500ms cubic-bezier(0.4,0,0.2,1)',
-        }}>
-          {rows.map((row, ri) => {
-            const rowFocused = zone === 'content' && contentRow === ri
-            return (
-              <div key={ri} style={{ paddingBottom: 24 }}>
-                {/* row title */}
+        {rows.map((row, ri) => {
+          const rowFocused = zone === 'content' && contentRow === ri
+          return (
+            <div key={ri} style={{ paddingBottom: 28 }}>
+              {/* row title */}
+              <div style={{
+                padding: '20px 60px 12px',
+                fontSize: 20, fontWeight: 800, textTransform: 'lowercase',
+                color: rowFocused ? '#fff' : 'rgba(255,255,255,0.38)',
+                transition: 'color 200ms',
+              }}>
+                {row.title}
+                <span style={{ color: ACCENT }}>{row.titleAccent}</span>
+              </div>
+
+              {/* grid */}
+              {row.type === 'grid' ? (
                 <div style={{
-                  padding: '18px 56px 10px',
-                  fontSize: 19, fontWeight: 800, textTransform: 'lowercase',
-                  color: rowFocused ? '#fff' : 'rgba(255,255,255,0.38)',
-                  transition: 'color 200ms',
+                  display: 'grid', gridTemplateColumns: 'repeat(4,1fr)',
+                  gap: 16, padding: '0 60px',
                 }}>
-                  {row.title}
-                  <span style={{ color: ACCENT }}>{row.titleAccent}</span>
+                  {row.channels.slice(0, 8).map((cat, ci) => {
+                    const f = rowFocused && contentCols[ri] === ci
+                    return (
+                      <div key={ci} style={{
+                        height: 110,
+                        background: f ? ACCENT : 'rgba(255,255,255,0.04)',
+                        border: f ? `none` : '1px dashed rgba(255,255,255,0.09)',
+                        borderRadius: 18,
+                        display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center', gap: 8,
+                        fontSize: 18, fontWeight: 700, textTransform: 'lowercase',
+                        transform: f ? 'translateY(-5px)' : 'none',
+                        boxShadow: f ? `0 14px 32px ${GLOW}` : 'none',
+                        transition: 'all 260ms cubic-bezier(0.34,1.56,0.64,1)',
+                      }}>
+                        <span style={{ fontSize: 26 }}>{CATEGORY_ICONS[cat.name] || '📂'}</span>
+                        <span>{cat.name}</span>
+                      </div>
+                    )
+                  })}
                 </div>
 
-                {/* grid */}
-                {row.type === 'grid' ? (
-                  <div style={{
-                    display: 'grid', gridTemplateColumns: 'repeat(4,1fr)',
-                    gap: 16, padding: '0 56px',
-                  }}>
-                    {row.channels.slice(0, 8).map((cat, ci) => {
-                      const f = rowFocused && contentCols[ri] === ci
-                      return (
-                        <div key={ci} style={{
-                          height: 110,
-                          background: f ? ACCENT : 'rgba(255,255,255,0.04)',
-                          border: f ? `none` : '1px dashed rgba(255,255,255,0.09)',
-                          borderRadius: 18,
-                          display: 'flex', flexDirection: 'column',
-                          alignItems: 'center', justifyContent: 'center', gap: 8,
-                          fontSize: 17, fontWeight: 700, textTransform: 'lowercase',
-                          transform: f ? 'translateY(-5px)' : 'none',
-                          boxShadow: f ? `0 14px 32px ${GLOW}` : 'none',
-                          transition: 'all 260ms cubic-bezier(0.34,1.56,0.64,1)',
-                        }}>
-                          <span style={{ fontSize: 24 }}>{CATEGORY_ICONS[cat.name] || '📂'}</span>
-                          <span>{cat.name}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
+              ) : (
+                <div
+                  ref={el => { rowRefs.current[ri] = el }}
+                  style={{
+                    display: 'flex',
+                    gap: row.type === 'portrait' ? 10 : 8,
+                    overflowX: 'auto', overflowY: 'visible',
+                    padding: '8px 0 16px 60px',
+                    scrollbarWidth: 'none',
+                  }}
+                >
+                  {row.channels.map((ch, ci) => {
+                    const f   = rowFocused && contentCols[ri] === ci
+                    const t   = row.tmdb?.get(ch.name)
+                    const src = t?.poster || ch.logo
 
-                ) : (
-                  // horizontal scroll
-                  <div
-                    ref={el => { rowRefs.current[ri] = el }}
-                    style={{
-                      display: 'flex',
-                      gap: row.type === 'portrait' ? 10 : 8,
-                      overflowX: 'auto', overflowY: 'visible',
-                      padding: '8px 0 16px 56px',
-                      scrollbarWidth: 'none',
-                    }}
-                  >
-                    {row.channels.map((ch, ci) => {
-                      const f   = rowFocused && contentCols[ri] === ci
-                      const t   = row.tmdb?.get(ch.name)
-                      const src = t?.poster || ch.logo
-
-                      if (row.type === 'portrait') {
-                        return (
-                          <div key={ci} onClick={() => onPlay(ch)} style={{
-                            position: 'relative',
-                            width: 190, minWidth: 190, height: 285,
-                            borderRadius: 10, overflow: 'hidden',
-                            flexShrink: 0, cursor: 'pointer',
-                            transform: f ? 'scale(1.07)' : 'scale(1)',
-                            zIndex: f ? 10 : 1,
-                            border: f ? `3px solid ${ACCENT}` : '1px solid rgba(255,255,255,0.06)',
-                            boxShadow: f ? `0 0 32px ${GLOW}` : 'none',
-                            transition: 'all 260ms cubic-bezier(0.34,1.56,0.64,1)',
-                            background: 'linear-gradient(135deg,#1a1a2e,#16213e)',
-                          }}>
-                            {src && <img src={src} style={{ width:'100%',height:'100%',objectFit:'cover' }} />}
-                            <div style={{
-                              position:'absolute',bottom:0,left:0,right:0,
-                              padding:'6px 8px 8px',
-                              background:'linear-gradient(transparent,rgba(0,0,0,0.92))',
-                              fontSize: 13, fontWeight: 700,
-                              whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',
-                            }}>{ch.name}</div>
-                          </div>
-                        )
-                      }
-
-                      const isWide = row.type === 'wide'
+                    if (row.type === 'portrait') {
                       return (
                         <div key={ci} onClick={() => onPlay(ch)} style={{
-                          position: 'relative', display:'flex', alignItems:'flex-end',
-                          minWidth: isWide ? 380 : 260, flexShrink: 0, cursor:'pointer',
+                          position: 'relative',
+                          width: 190, minWidth: 190, height: 285,
+                          borderRadius: 10, overflow: 'hidden',
+                          flexShrink: 0, cursor: 'pointer',
+                          transform: f ? 'scale(1.07)' : 'scale(1)',
+                          zIndex: f ? 10 : 1,
+                          border: f ? `3px solid ${ACCENT}` : '1px solid rgba(255,255,255,0.06)',
+                          boxShadow: f ? `0 0 32px ${GLOW}` : 'none',
                           transition: 'all 260ms cubic-bezier(0.34,1.56,0.64,1)',
+                          background: 'linear-gradient(135deg,#1a1a2e,#16213e)',
                         }}>
-                          {isWide && (
-                            <div style={{
-                              fontSize:'6.5rem',fontWeight:900,lineHeight:1,
-                              color:'transparent',
-                              WebkitTextStroke: f ? `2px ${ACCENT}` : '2px rgba(255,255,255,0.1)',
-                              width:100,textAlign:'right',
-                              marginBottom:-16,marginRight:-2,zIndex:2,
-                              transition:'all 200ms',
-                            }}>{ci+1}</div>
-                          )}
-                          <div>
-                            <div style={{
-                              width: isWide?270:230, height: isWide?152:128,
-                              borderRadius:11,overflow:'hidden',
-                              background:'linear-gradient(135deg,#0f0f23,#1a1a2e)',
-                              display:'flex',alignItems:'center',justifyContent:'center',
-                              border: f ? `3px solid ${ACCENT}` : '1px solid rgba(255,255,255,0.06)',
-                              boxShadow: f ? `0 0 28px ${GLOW}` : 'none',
-                              transition:'all 200ms',
-                              opacity: f ? 1 : 0.78,
-                            }}>
-                              {src
-                                ? <img src={src} style={{width:'100%',height:'100%',objectFit:'cover'}} />
-                                : <span style={{fontSize:28}}>📺</span>
-                              }
-                            </div>
-                            <div style={{
-                              fontSize:13,fontWeight:700,marginTop:6,
-                              whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',
-                              maxWidth: isWide?270:230,
-                            }}>{ch.name}</div>
-                          </div>
+                          {src && <img src={src} style={{ width:'100%',height:'100%',objectFit:'cover' }} />}
+                          <div style={{
+                            position:'absolute',bottom:0,left:0,right:0,
+                            padding:'6px 8px 8px',
+                            background:'linear-gradient(transparent,rgba(0,0,0,0.92))',
+                            fontSize: 14, fontWeight: 700,
+                            whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',
+                          }}>{ch.name}</div>
                         </div>
                       )
-                    })}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+                    }
+
+                    const isWide = row.type === 'wide'
+                    return (
+                      <div key={ci} onClick={() => onPlay(ch)} style={{
+                        position: 'relative', display:'flex', alignItems:'flex-end',
+                        minWidth: isWide ? 380 : 260, flexShrink: 0, cursor:'pointer',
+                        transition: 'all 260ms cubic-bezier(0.34,1.56,0.64,1)',
+                      }}>
+                        {isWide && (
+                          <div style={{
+                            fontSize:'6.5rem',fontWeight:900,lineHeight:1,
+                            color:'transparent',
+                            WebkitTextStroke: f ? `2px ${ACCENT}` : '2px rgba(255,255,255,0.1)',
+                            width:100,textAlign:'right',
+                            marginBottom:-16,marginRight:-2,zIndex:2,
+                            transition:'all 200ms',
+                          }}>{ci+1}</div>
+                        )}
+                        <div>
+                          <div style={{
+                            width: isWide?270:230, height: isWide?152:128,
+                            borderRadius:11,overflow:'hidden',
+                            background:'linear-gradient(135deg,#0f0f23,#1a1a2e)',
+                            display:'flex',alignItems:'center',justifyContent:'center',
+                            border: f ? `3px solid ${ACCENT}` : '1px solid rgba(255,255,255,0.06)',
+                            boxShadow: f ? `0 0 28px ${GLOW}` : 'none',
+                            transition:'all 200ms',
+                            opacity: f ? 1 : 0.78,
+                          }}>
+                            {src
+                              ? <img src={src} style={{width:'100%',height:'100%',objectFit:'cover'}} />
+                              : <span style={{fontSize:28}}>📺</span>
+                            }
+                          </div>
+                          <div style={{
+                            fontSize:14,fontWeight:700,marginTop:6,
+                            whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',
+                            maxWidth: isWide?270:230,
+                          }}>{ch.name}</div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -668,10 +639,11 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       )}
 
       <style>{`
-        @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.25} }
-        @keyframes spin  { to{transform:rotate(360deg)} }
+        @keyframes pulse   { 0%,100%{opacity:1} 50%{opacity:0.25} }
+        @keyframes spin    { to{transform:rotate(360deg)} }
+        @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
         *::-webkit-scrollbar { display:none }
-        *  { scrollbar-width:none }
+        * { scrollbar-width:none }
       `}</style>
     </div>
   )
@@ -680,12 +652,12 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function arrowStyle(side: 'left' | 'right'): React.CSSProperties {
   return {
-    position: 'absolute', [side]: 16, top: '50%',
+    position: 'absolute', [side]: 24, top: '50%',
     transform: 'translateY(-50%)',
-    zIndex: 30, fontSize: 38,
-    color: 'rgba(255,255,255,0.65)',
-    background: 'rgba(0,0,0,0.45)',
-    width: 48, height: 48, borderRadius: '50%',
+    zIndex: 30, fontSize: 44,
+    color: 'rgba(255,255,255,0.7)',
+    background: 'rgba(0,0,0,0.5)',
+    width: 52, height: 52, borderRadius: '50%',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     pointerEvents: 'none',
   }
