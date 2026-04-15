@@ -37,7 +37,7 @@ export default function SettingsScreen({ onBack }: Props) {
   }
 
   useEffect(() => {
-    if (status === 'success') {
+    if (status === 'ready') {
       const t = setTimeout(() => onBackRef.current(), 1000)
       return () => clearTimeout(t)
     }
@@ -50,9 +50,10 @@ export default function SettingsScreen({ onBack }: Props) {
       lastKey.current = now
 
       const fromInput = (e.target as HTMLElement).tagName === 'INPUT'
+      const isLoading = statusRef.current !== 'idle' && statusRef.current !== 'ready' && statusRef.current !== 'error'
 
       if (!fromInput && (e.keyCode === 10009 || e.keyCode === 8)) {
-        if (statusRef.current !== 'loading') onBackRef.current()
+        if (!isLoading) onBackRef.current()
       } else if (e.keyCode === 13) {
         handleSave()
       }
@@ -60,6 +61,8 @@ export default function SettingsScreen({ onBack }: Props) {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [])
+
+  const isLoading = status !== 'idle' && status !== 'ready' && status !== 'error'
 
   return (
     <div>
@@ -70,9 +73,9 @@ export default function SettingsScreen({ onBack }: Props) {
         onChange={e => setUrl(e.target.value)}
         placeholder="URL da lista M3U"
       />
-      <button onClick={handleSave} disabled={status === 'loading'}>Salvar</button>
-      {status === 'loading' && <div>Carregando lista...</div>}
-      {status === 'success' && <div>Lista carregada com sucesso!</div>}
+      <button onClick={handleSave} disabled={isLoading}>Salvar</button>
+      {isLoading && <div>Carregando lista...</div>}
+      {status === 'ready' && <div>Lista carregada com sucesso!</div>}
       {status === 'error' && <div style={{ color: 'red' }}>{error}</div>}
     </div>
   )

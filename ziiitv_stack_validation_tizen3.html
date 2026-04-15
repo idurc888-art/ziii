@@ -1,0 +1,260 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); }
+  .root { padding: 1rem 0; }
+  .layer-title { font-size: 11px; font-weight: 500; color: var(--color-text-tertiary); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px; }
+  .card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 14px 16px; margin-bottom: 10px; cursor: pointer; transition: border-color .15s; }
+  .card:hover { border-color: var(--color-border-secondary); }
+  .card.active { border-color: var(--color-border-primary); }
+  .card-header { display: flex; align-items: center; gap: 10px; }
+  .badge { font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+  .badge-ok   { background: var(--color-background-success); color: var(--color-text-success); }
+  .badge-warn { background: var(--color-background-warning); color: var(--color-text-warning); }
+  .badge-crit { background: var(--color-background-danger);  color: var(--color-text-danger); }
+  .card-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); flex: 1; }
+  .card-sub  { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+  .chevron { font-size: 12px; color: var(--color-text-tertiary); transition: transform .2s; }
+  .card.active .chevron { transform: rotate(90deg); }
+  .detail { display: none; margin-top: 12px; border-top: 0.5px solid var(--color-border-tertiary); padding-top: 12px; }
+  .card.active .detail { display: block; }
+  .detail-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 8px; margin-bottom: 10px; }
+  .det-item { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; }
+  .det-label { font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 3px; }
+  .det-val   { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+  .code-block { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); white-space: pre-wrap; word-break: break-all; margin-top: 8px; }
+  .fix-list { margin-top: 8px; }
+  .fix-item { display: flex; gap: 8px; font-size: 12px; color: var(--color-text-secondary); padding: 4px 0; border-bottom: 0.5px solid var(--color-border-tertiary); align-items: flex-start; }
+  .fix-item:last-child { border-bottom: none; }
+  .fix-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .dot-ok   { background: var(--color-text-success); }
+  .dot-warn { background: var(--color-text-warning); }
+  .dot-crit { background: var(--color-text-danger); }
+  .compat-bar { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+  .compat-seg { height: 8px; border-radius: 4px; flex: 1; }
+  .compat-label { font-size: 11px; color: var(--color-text-tertiary); white-space: nowrap; }
+  .section-sep { font-size: 11px; font-weight: 500; color: var(--color-text-tertiary); letter-spacing: .06em; text-transform: uppercase; margin: 16px 0 8px; border-top: 0.5px solid var(--color-border-tertiary); padding-top: 14px; }
+  .ask-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; background: transparent; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); padding: 5px 10px; cursor: pointer; color: var(--color-text-secondary); margin-top: 8px; }
+  .ask-btn:hover { background: var(--color-background-secondary); }
+</style>
+<div class="root">
+  <div class="layer-title">Validação da stack — Samsung Tizen 3.0+ (2017→2026)</div>
+
+  <!-- React + Vite -->
+  <div class="card" onclick="toggle(this)">
+    <div class="card-header">
+      <span class="badge badge-ok">✓ Aprovado</span>
+      <div>
+        <div class="card-name">React + Vite</div>
+        <div class="card-sub">UI Framework — camada de renderização</div>
+      </div>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="detail">
+      <div class="detail-grid">
+        <div class="det-item"><div class="det-label">Motor JS no Tizen 3.0</div><div class="det-val">V8 (Chromium 47+)</div></div>
+        <div class="det-item"><div class="det-label">ES6 suportado?</div><div class="det-val">Sim — Tizen 3.0+</div></div>
+        <div class="det-item"><div class="det-label">RAM disponível (TV)</div><div class="det-val">512 MB – 1 GB</div></div>
+        <div class="det-item"><div class="det-label">Quem usa em TV</div><div class="det-val">Pluto TV, Peacock+</div></div>
+      </div>
+      <div class="fix-list">
+        <div class="fix-item"><span class="fix-dot dot-crit"></span><span><b>D-pad navigation:</b> React não gerencia foco por controle remoto. Usar <code>@noriginmedia/norigin-spatial-navigation</code>.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-warn"></span><span><b>Bundle size:</b> manter abaixo de 300 KB gzipped. Code split por rota — player num chunk separado.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-warn"></span><span><b>Animações:</b> usar só <code>transform</code> e <code>opacity</code> — GPU. CSS transitions normais travam em TVs 2017.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-ok"></span><span><b>Target build:</b> definir <code>target: 'es2017'</code> no Vite para não gerar polyfills desnecessários.</span></div>
+      </div>
+      <div class="code-block">// vite.config.js
+build: {
+  target: 'es2017',
+  rollupOptions: {
+    output: {
+      manualChunks: {
+        player: ['shaka-player'],
+        react: ['react','react-dom']
+      }
+    }
+  }
+}</div>
+      <button class="ask-btn" onclick="sendPrompt('Como implementar navegação D-pad com React para Samsung TV Tizen 3?')">Como implementar D-pad no React ↗</button>
+    </div>
+  </div>
+
+  <!-- Shaka Player -->
+  <div class="card" onclick="toggle(this)">
+    <div class="card-header">
+      <span class="badge badge-ok">✓ Aprovado</span>
+      <div>
+        <div class="card-name">Shaka Player</div>
+        <div class="card-sub">Reprodução HLS M3U8 + MPEG-DASH — escolha principal</div>
+      </div>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="detail">
+      <div class="detail-grid">
+        <div class="det-item"><div class="det-label">Quem usa</div><div class="det-val">YouTube · Disney+</div></div>
+        <div class="det-item"><div class="det-label">Tizen 3.0 suporte</div><div class="det-val">✓ Oficial Google</div></div>
+        <div class="det-item"><div class="det-label">MSE disponível</div><div class="det-val">Tizen 3.0+ (Chromium)</div></div>
+        <div class="det-item"><div class="det-label">ABR automático</div><div class="det-val">✓ nativo na lib</div></div>
+      </div>
+      <div class="fix-list">
+        <div class="fix-item"><span class="fix-dot dot-crit"></span><span><b>bufferingGoal:</b> padrão é 10s. TVs precisam de 30s para não travar em conexões instáveis.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-crit"></span><span><b>ignoreTextStreamFailures: true</b> — IPTV streams têm metadados quebrados que derrubam o Shaka por padrão.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-warn"></span><span><b>maxHeight: 1080</b> — TVs 2017-2018 sem hardware 4K não conseguem decodificar. Limitar no ABR.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-ok"></span><span><b>DRM:</b> PlayReady + Widevine já integrados para quando precisar de conteúdo protegido.</span></div>
+      </div>
+      <div class="code-block">player.configure({
+  streaming: {
+    bufferingGoal: 30,
+    rebufferingGoal: 5,
+    stallEnabled: true,
+    stallThreshold: 1,
+  },
+  abr: {
+    restrictions: { maxHeight: 1080 }
+  },
+  manifest: {
+    hls: {
+      ignoreTextStreamFailures: true,
+      ignoreImageStreamFailures: true,
+    }
+  }
+})</div>
+      <button class="ask-btn" onclick="sendPrompt('Como configurar o Shaka Player para streams IPTV com M3U8 instável no Tizen 3?')">Config completa para IPTV ↗</button>
+    </div>
+  </div>
+
+  <!-- Samsung AVPlay -->
+  <div class="card" onclick="toggle(this)">
+    <div class="card-header">
+      <span class="badge badge-ok">✓ Essencial</span>
+      <div>
+        <div class="card-name">Samsung AVPlay (fallback)</div>
+        <div class="card-sub">API nativa Tizen — fallback obrigatório</div>
+      </div>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="detail">
+      <div class="detail-grid">
+        <div class="det-item"><div class="det-label">Cobertura</div><div class="det-val">100% Samsung TVs</div></div>
+        <div class="det-item"><div class="det-label">Disponível desde</div><div class="det-val">Tizen 2.3 (2015)</div></div>
+        <div class="det-item"><div class="det-label">Custo CPU</div><div class="det-val">Zero — hardware</div></div>
+        <div class="det-item"><div class="det-label">HLS M3U8</div><div class="det-val">✓ nativo</div></div>
+      </div>
+      <div class="fix-list">
+        <div class="fix-item"><span class="fix-dot dot-ok"></span><span>Usar quando <code>shaka.Player.isBrowserSupported()</code> retornar false (Tizen 2.x, alguns 3.0 com bugs de MSE).</span></div>
+        <div class="fix-item"><span class="fix-dot dot-warn"></span><span>AVPlay é <b>só Samsung</b>. Não tenta usar em LG webOS — travar o app.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-warn"></span><span>Não tem ABR automático tão refinado quanto Shaka. Qualidade pode ser inferior em conexões variáveis.</span></div>
+      </div>
+      <div class="code-block">// Cadeia de fallback segura
+async function initPlayer(videoEl, url) {
+  if (shaka.Player.isBrowserSupported()) {
+    return await initShaka(videoEl, url)
+  }
+  if (window.webapis?.avplay) {
+    return initAVPlay(url) // Samsung nativo
+  }
+  videoEl.src = url // HTML5 puro (2019+)
+}</div>
+    </div>
+  </div>
+
+  <!-- Parser M3U8 -->
+  <div class="card" onclick="toggle(this)">
+    <div class="card-header">
+      <span class="badge badge-warn">⚠ Hardening</span>
+      <div>
+        <div class="card-name">Parser M3U8</div>
+        <div class="card-sub">Playlist IPTV — precisa ser defensivo</div>
+      </div>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="detail">
+      <div class="detail-grid">
+        <div class="det-item"><div class="det-label">Lib recomendada</div><div class="det-val">iptv-playlist-parser</div></div>
+        <div class="det-item"><div class="det-label">Problema real</div><div class="det-val">M3U8 de IPTV são sujos</div></div>
+        <div class="det-item"><div class="det-label">Encoding comum</div><div class="det-val">UTF-8 + Windows-1252</div></div>
+        <div class="det-item"><div class="det-label">Tamanho típico</div><div class="det-val">500KB – 5MB</div></div>
+      </div>
+      <div class="fix-list">
+        <div class="fix-item"><span class="fix-dot dot-crit"></span><span>Normalizar <code>\r\n</code> → <code>\n</code> antes de processar. Windows line endings quebram o parser em TVs.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-crit"></span><span>Usar regex com optional chaining (<code>?.[1]</code>) — campos como <code>group-title</code> podem estar ausentes.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-warn"></span><span>Processar em chunks ou com <code>requestIdleCallback</code> para não travar a UI em listas grandes.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-ok"></span><span>Cachear no IndexedDB após primeiro parse — não reproces­sar na cada navegação.</span></div>
+      </div>
+      <button class="ask-btn" onclick="sendPrompt('Me gera um parser M3U8 defensivo para IPTV rodando em Samsung Tizen 3, com suporte a encoding misto e campos ausentes')">Gerar parser defensivo ↗</button>
+    </div>
+  </div>
+
+  <!-- EPG XMLTV -->
+  <div class="card" onclick="toggle(this)">
+    <div class="card-header">
+      <span class="badge badge-warn">⚠ Risco alto</span>
+      <div>
+        <div class="card-name">EPG via XMLTV</div>
+        <div class="card-sub">Guia de programação — maior ponto de falha</div>
+      </div>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="detail">
+      <div class="detail-grid">
+        <div class="det-item"><div class="det-label">Tamanho típico</div><div class="det-val">50 MB – 300 MB</div></div>
+        <div class="det-item"><div class="det-label">RAM de TV (2017)</div><div class="det-val">512 MB total</div></div>
+        <div class="det-item"><div class="det-label">Parse completo?</div><div class="det-val">❌ Inviável na TV</div></div>
+        <div class="det-item"><div class="det-label">Estratégia certa</div><div class="det-val">Sob demanda + cache</div></div>
+      </div>
+      <div class="fix-list">
+        <div class="fix-item"><span class="fix-dot dot-crit"></span><span>Nunca fazer fetch e parse completo do XMLTV na TV. 300 MB vai travar ou crashar o app.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-crit"></span><span>Carregar EPG só do canal atual + próximas 2h. Buscar próximo canal só quando o usuário navegar.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-warn"></span><span>Usar <code>Cache API</code> com TTL de 1h. XMLTV não muda a cada segundo — reutilizar o parse.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-ok"></span><span>Considerar proxy backend leve que pre-processa o XMLTV e entrega JSON por canal — elimina o problema.</span></div>
+      </div>
+      <button class="ask-btn" onclick="sendPrompt('Como implementar carregamento de EPG XMLTV sob demanda para Samsung TV Tizen 3, com cache eficiente?')">Estratégia EPG completa ↗</button>
+    </div>
+  </div>
+
+  <!-- Storage -->
+  <div class="card" onclick="toggle(this)">
+    <div class="card-header">
+      <span class="badge badge-warn">⚠ Definir</span>
+      <div>
+        <div class="card-name">Armazenamento local</div>
+        <div class="card-sub">Favoritos, histórico, configurações</div>
+      </div>
+      <span class="chevron">▶</span>
+    </div>
+    <div class="detail">
+      <div class="detail-grid">
+        <div class="det-item"><div class="det-label">localStorage limite</div><div class="det-val">5 MB (Samsung)</div></div>
+        <div class="det-item"><div class="det-label">IndexedDB</div><div class="det-val">✓ Tizen 3.0+</div></div>
+        <div class="det-item"><div class="det-label">Cache API</div><div class="det-val">✓ Tizen 4.0+</div></div>
+        <div class="det-item"><div class="det-label">Cookies</div><div class="det-val">⚠ Evitar em TV</div></div>
+      </div>
+      <div class="fix-list">
+        <div class="fix-item"><span class="fix-dot dot-ok"></span><span><b>Configurações + favoritos:</b> localStorage — simples, rápido, suficiente.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-ok"></span><span><b>Cache de playlists:</b> IndexedDB — suporta objetos grandes, assíncrono, não bloqueia UI.</span></div>
+        <div class="fix-item"><span class="fix-dot dot-warn"></span><span><b>Cache API:</b> usar para assets estáticos e respostas HTTP. Só Tizen 4.0+, checar antes de usar.</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-sep">Cobertura de dispositivos com essa stack</div>
+
+  <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-lg);padding:14px 16px;">
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);margin-bottom:6px;">
+      <span>2017 – Tizen 3.0</span><span>2026 – Tizen 10.0</span>
+    </div>
+    <div style="height:10px;border-radius:5px;background:linear-gradient(to right,#1D9E75,#1D9E75);margin-bottom:10px;"></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--color-text-secondary);">✓ <b style="color:var(--color-text-primary)">~95%</b> das Samsung TVs ativas</span>
+      <span style="font-size:12px;color:var(--color-text-secondary);">✓ Mesmo código 2017 → 2026</span>
+      <span style="font-size:12px;color:var(--color-text-secondary);">✓ LG webOS com ajuste mínimo</span>
+    </div>
+  </div>
+</div>
+<script>
+function toggle(card) {
+  const wasActive = card.classList.contains('active');
+  document.querySelectorAll('.card').forEach(c => c.classList.remove('active'));
+  if (!wasActive) card.classList.add('active');
+}
+</script>

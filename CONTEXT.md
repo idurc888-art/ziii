@@ -24,11 +24,14 @@
 
 ## Arquitetura em Camadas — ordem de construção
 
-### Camada 1 — Playlist Engine (ATUAL)
+### Camada 1 — Playlist Engine (CONCLUÍDA)
 - Web Worker faz fetch + parse da M3U
 - Resultado: `{ groups: Record<string, Channel[]> }` entregue via postMessage
 - Persistência: URL salva em localStorage, canais cacheados em IndexedDB
 - Nunca recarrega a lista se já está em cache (só se usuário forçar)
+- **Normalização:** `categoryMapper.ts` transforma grupos crus em 8 categorias fixas da UI
+- **Pipeline de 3 níveis:** Parse bruto → Normalização → Consumo da UI
+- A UI nunca lê `group-title` original da M3U diretamente
 
 ### Camada 2 — Player
 - Shaka Player inicializado uma única vez (singleton)
@@ -75,8 +78,9 @@
 
 ## Estado do Projeto
 
-- [x] Camada 1: Playlist Engine (Web Worker + IndexedDB) — CONCLUÍDA
-- [ ] Camada 2: Player (Shaka + AVPlay fallback)
+- [x] Camada 1: Playlist Engine (Web Worker + IndexedDB + Normalização) — CONCLUÍDA
+- [x] Camada 1.5: Pipeline de normalização (categoryMapper.ts) — CONCLUÍDA
+- [/] Camada 2: Player (Shaka + AVPlay fallback) — EM ANDAMENTO
 - [ ] Camada 3: Interface Visual
 
 ---

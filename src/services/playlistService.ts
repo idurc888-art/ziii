@@ -1,45 +1,128 @@
-import { openDB } from 'idb'
+import { parseM3U } from '@iptv/playlist'
 import type { Channel } from '../types/channel'
+import * as db from './dbClient'
 
-const DB_NAME = 'ziiiTV-db'
-const DB_VERSION = 1
-const STORE = 'playlist'
+const DEBUG = false // Feature flag para logs detalhados
 
-const db = openDB(DB_NAME, DB_VERSION, {
-  upgrade(db) {
-    db.createObjectStore(STORE)
-  },
-})
+export interface CacheEntry {
+  data: Record<string, Channel[]>
+  status: string
+  loadedAt: number
+  channelCount: number
+  source: 'memory' | 'cache' | 'remote'
+}
+
+let loadId = 0
+const activeLoads = new Map<string, Promise<Record<string, Channel[]>>>()
+const loadedUrls = new Map<string, CacheEntry>()
+
+async function checkCache(url: string, id: number): Promise<Record<string, Channel[]> | null> {
+  console.log(`[Run #${id}] cache_check`)
+  const cached = await db.get(url)
+  if (cached) {
+    console.log(`[Run #${id}] cache_hit`)
+    return cached
+  }
+  console.log(`[Run #${id}] cache_miss`)
+  return null
+}
+
+async function loadRemote(url: string, id: number): Promise<Record<string, Channel[]>> {
+  console.log(`[Run #${id}] remote_fetch`)
+  if (DEBUG) console.log(`[Playlist #${id}] Fetch iniciado`)
+  
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  
+  const text = await res.text()
+  const playlist = parseM3U(text)
+  
+  const groups: Record<string, Channel[]> = {}
+  let count = 0
+  
+  for (const item of playlist.channels) {
+    const group = item.groupTitle ?? 'Sem categoria'
+    const ch: Channel = {
+      name: item.name ?? '',
+      url: item.url ?? '',
+      logo: item.tvgLogo ?? '',
+      group,
+    }
+    if (!groups[group]) groups[group] = []
+    groups[group].push(ch)
+    count++
+  }
+  
+  if (DEBUG) console.log(`[Playlist #${id}] Parse completo: ${Object.keys(groups).length} grupos, ${count} canais`)
+  
+  if (DEBUG) console.log(`[Playlist #${id}] Salvando cache`)
+  await db.put(url, groups)
+  
+  return groups
+}
 
 export async function loadPlaylist(url: string): Promise<Record<string, Channel[]>> {
-  const cached = await (await db).get(STORE, url)
-  if (cached) return cached
-
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(
-      new URL('../workers/playlistWorker.ts', import.meta.url),
-      { type: 'module' }
-    )
-
-    worker.onmessage = async (e) => {
-      worker.terminate()
-      if (e.data.type === 'SUCCESS') {
-        await (await db).put(STORE, e.data.groups, url)
-        resolve(e.data.groups)
-      } else {
-        reject(new Error(e.data.message))
+  const id = ++loadId
+  console.log(`[Run #${id}] start`)
+  
+  // Idempotência: RAM primeiro
+  if (loadedUrls.has(url)) {
+    console.log(`[Run #${id}] memory_hit`)
+    console.log(`[Run #${id}] ready (source: memory)`)
+    return loadedUrls.get(url)!.data
+  }
+  console.log(`[Run #${id}] no_memory`)
+  
+  // Reutiliza promise em andamento
+  if (activeLoads.has(url)) {
+    console.log(`[Run #${id}] in_flight_reuse`)
+    console.log(`[Run #${id}] ready (source: in_flight_reused)`)
+    return activeLoads.get(url)!
+  }
+  console.log(`[Run #${id}] no_in_flight`)
+  
+  const promise = (async () => {
+    try {
+      // Tenta cache persistente
+      let groups = await checkCache(url, id)
+      let source: CacheEntry['source'] = 'cache'
+      
+      // Se não, fetch remoto
+      if (!groups) {
+        groups = await loadRemote(url, id)
+        source = 'remote'
       }
+      
+      console.log(`[Run #${id}] ready (source: ${source})`)
+      
+      // Conta os canais (já agrupados)
+      const channelCount = Object.values(groups).reduce((acc, curr) => acc + curr.length, 0)
+      
+      // Armazena metadados na memória
+      loadedUrls.set(url, {
+        data: groups,
+        status: 'ready',
+        loadedAt: Date.now(),
+        channelCount,
+        source
+      })
+      
+      return groups
+    } catch (err) {
+      console.log(`[Run #${id}] error`)
+      throw err
+    } finally {
+      activeLoads.delete(url)
     }
-
-    worker.onerror = (e) => {
-      worker.terminate()
-      reject(new Error(e.message))
-    }
-
-    worker.postMessage({ type: 'LOAD', url })
-  })
+  })()
+  
+  activeLoads.set(url, promise)
+  return promise
 }
 
 export async function clearPlaylistCache(): Promise<void> {
-  await (await db).clear(STORE)
+  await db.clear()
+  loadedUrls.clear()
+  activeLoads.clear()
 }
+

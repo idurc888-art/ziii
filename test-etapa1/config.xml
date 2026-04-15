@@ -23,9 +23,6 @@
   <tizen:privilege name="http://tizen.org/privilege/system"/>
   <tizen:privilege name="http://tizen.org/privilege/content.read"/>
   <tizen:privilege name="http://tizen.org/privilege/application.read"/>
-  <tizen:privilege name="http://tizen.org/privilege/unlimitedstorage"/>
-  <tizen:privilege name="http://tizen.org/privilege/filesystem.read"/>
-  <tizen:privilege name="http://tizen.org/privilege/filesystem.write"/>
 
   <tizen:profile name="tv"/>
   <name>ziiiTV</name>

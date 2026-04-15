@@ -12,6 +12,9 @@ npm run build
 echo "▶ Copiando config.xml e icon para dist..."
 cp public/config.xml dist/config.xml
 cp public/icon.png dist/icon.png
+# Shaka Player é copiado automaticamente de public/ pelo Vite,
+# mas confirmamos a existência por segurança
+[ -f dist/shaka-player.js ] || cp public/shaka-player.js dist/shaka-player.js
 
 echo "▶ Empacotando .wgt..."
 cd dist

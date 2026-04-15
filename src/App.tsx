@@ -1,49 +1,80 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useChannelsStore } from './store/channelsStore'
-import { type Channel } from './types/channel'
-import HomeScreen from './screens/HomeScreen/HomeScreen'
+import DebugOverlay from './components/DebugOverlay'
+const SHOW_DEBUG = false
 import PlayerScreen from './screens/PlayerScreen/PlayerScreen'
-import SettingsScreen from './screens/SettingsScreen/SettingsScreen'
+import SplashScreen from './screens/SplashScreen/SplashScreen'
+import ProfileScreen from './screens/ProfileScreen/ProfileScreen'
+import HomeScreen from './screens/HomeScreen/HomeScreen'
 
-type Screen = 'home' | 'player' | 'settings'
+const TEST_M3U_URL = 'http://cdc55.cc/get.php?username=0357028521&password=82740&type=m3u_plus&output=ts'
+
+type AppScreen = 'splash' | 'profiles' | 'home'
 
 export default function App() {
-  const loadMock = useChannelsStore(s => s.loadMock)
+  const normalizedGroups = useChannelsStore(s => s.normalizedGroups)
   const loadFromUrl = useChannelsStore(s => s.loadFromUrl)
-  const [screen, setScreen] = useState<Screen>('home')
-  const [currentChannel, setCurrentChannel] = useState<Channel | null>(null)
+  const currentChannel = useChannelsStore(s => s.currentChannel)
+  const setCurrentChannel = useChannelsStore(s => s.setCurrentChannel)
 
-  const screenRef = useRef(screen)
-  screenRef.current = screen
+  const [appScreen, setAppScreen] = useState<AppScreen>('splash')
 
+  // ─── Boot: inicia playlist em background durante splash ───────────────────
   useEffect(() => {
-    // temporariamente desabilitado para diagnóstico
-    // const saved = localStorage.getItem('ziiiTV-m3u-url')
-    // if (saved) loadFromUrl(saved)
-    // else loadMock()
-    loadMock()
-  }, [])
+    const lastUrl = localStorage.getItem('ziiiTV_lastUrl') || TEST_M3U_URL
+    loadFromUrl(lastUrl)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).tagName === 'INPUT') return
-      if (e.keyCode === 10009 || e.keyCode === 8) {
-        if (screenRef.current !== 'home') setScreen('home')
-      }
-      if ((e.keyCode === 83 || e.keyCode === 77 || e.keyCode === 457) && screenRef.current === 'home') {
-        setScreen('settings')
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [])
-
-  const handlePlay = (ch: Channel) => {
-    setCurrentChannel(ch)
-    setScreen('player')
+  // ─── Roteamento: PlayerScreen ──────────────────────────────────────────────
+  if (currentChannel) {
+    return (
+      <>
+        {SHOW_DEBUG && <DebugOverlay />}
+        <PlayerScreen
+          channel={currentChannel}
+          onBack={() => {
+            setCurrentChannel(null)
+            document.body.focus()
+          }}
+        />
+      </>
+    )
   }
 
-  if (screen === 'player' && currentChannel) return <PlayerScreen channel={currentChannel} onBack={() => { setScreen('home'); document.body.focus() }} />
-  if (screen === 'settings') return <SettingsScreen onBack={() => { setScreen('home'); document.body.focus() }} />
-  return <HomeScreen onPlay={handlePlay} />
+  // ─── Roteamento: Splash ───────────────────────────────────────────────────
+  if (appScreen === 'splash') {
+    return (
+      <>
+        {SHOW_DEBUG && <DebugOverlay />}
+        <SplashScreen onDone={() => setAppScreen('profiles')} />
+      </>
+    )
+  }
+
+  // ─── Roteamento: Profiles ─────────────────────────────────────────────────
+  if (appScreen === 'profiles') {
+    return (
+      <>
+        {SHOW_DEBUG && <DebugOverlay />}
+        <ProfileScreen onSelect={() => setAppScreen('home')} />
+      </>
+    )
+  }
+
+  // ─── Roteamento: Home ─────────────────────────────────────────────────────
+  return (
+    <>
+      {SHOW_DEBUG && <DebugOverlay />}
+      <HomeScreen
+        groups={normalizedGroups}
+        onPlay={(ch) => setCurrentChannel(ch)}
+        onBack={() => {
+          const tizen = (window as any).tizen
+          if (tizen?.application) {
+            tizen.application.getCurrentApplication().exit()
+          }
+        }}
+      />
+    </>
+  )
 }

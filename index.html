@@ -5,9 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ziiitv</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100;300;400;600;700;800;900&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+      * { font-family: 'Outfit', sans-serif; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <!-- Shaka Player: UMD global carregado antes do bundle (window.shaka) -->
+    <script src="/shaka-player.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
