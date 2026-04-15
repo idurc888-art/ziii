@@ -18,10 +18,14 @@ const loadedUrls = new Map<string, CacheEntry>()
 
 async function checkCache(url: string, id: number): Promise<Record<string, Channel[]> | null> {
   console.log(`[Run #${id}] cache_check`)
-  const cached = await db.get(url)
-  if (cached) {
-    console.log(`[Run #${id}] cache_hit`)
-    return cached
+  try {
+    const cached = await db.get(url)
+    if (cached) {
+      console.log(`[Run #${id}] cache_hit`)
+      return cached
+    }
+  } catch (err) {
+    console.warn(`[Run #${id}] cache_error — ignorando:`, err)
   }
   console.log(`[Run #${id}] cache_miss`)
   return null
