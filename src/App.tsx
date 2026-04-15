@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useChannelsStore } from './store/channelsStore'
 import DebugOverlay from './components/DebugOverlay'
 const SHOW_DEBUG = false
@@ -13,17 +13,53 @@ type AppScreen = 'splash' | 'profiles' | 'home'
 
 export default function App() {
   const normalizedGroups = useChannelsStore(s => s.normalizedGroups)
-  const loadFromUrl = useChannelsStore(s => s.loadFromUrl)
-  const currentChannel = useChannelsStore(s => s.currentChannel)
+  const loadFromUrl      = useChannelsStore(s => s.loadFromUrl)
+  const currentChannel   = useChannelsStore(s => s.currentChannel)
   const setCurrentChannel = useChannelsStore(s => s.setCurrentChannel)
 
   const [appScreen, setAppScreen] = useState<AppScreen>('splash')
+
+  // ref para o player Shaka ativo (preenchido pelo PlayerScreen via callback)
+  const shakaRef = useRef<any>(null)
 
   // ─── Boot: inicia playlist em background durante splash ───────────────────
   useEffect(() => {
     const lastUrl = localStorage.getItem('ziiiTV_lastUrl') || TEST_M3U_URL
     loadFromUrl(lastUrl)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Samsung: pause/resume ao sair/voltar para o app ─────────────────────
+  useEffect(() => {
+    const handleVisibility = () => {
+      const avplay = (window as any).webapis?.avplay
+
+      if (document.visibilityState === 'hidden') {
+        // AVPlay (streams TS)
+        try { avplay?.pause() } catch (_) {}
+        // Shaka (streams HLS/DASH)
+        try {
+          if (shakaRef.current) {
+            const video = shakaRef.current.getMediaElement?.() as HTMLVideoElement | null
+            if (video && !video.paused) video.pause()
+          }
+        } catch (_) {}
+
+      } else if (document.visibilityState === 'visible') {
+        // AVPlay
+        try { avplay?.play() } catch (_) {}
+        // Shaka
+        try {
+          if (shakaRef.current) {
+            const video = shakaRef.current.getMediaElement?.() as HTMLVideoElement | null
+            if (video && video.paused) video.play().catch(() => {})
+          }
+        } catch (_) {}
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
 
   // ─── Roteamento: PlayerScreen ──────────────────────────────────────────────
   if (currentChannel) {
@@ -32,7 +68,9 @@ export default function App() {
         {SHOW_DEBUG && <DebugOverlay />}
         <PlayerScreen
           channel={currentChannel}
+          onShakaReady={(player) => { shakaRef.current = player }}
           onBack={() => {
+            shakaRef.current = null
             setCurrentChannel(null)
             document.body.focus()
           }}
