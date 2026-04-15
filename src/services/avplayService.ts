@@ -1,7 +1,10 @@
 // AVPlay Service — API nativa Samsung Tizen
-// Máquina de estados: NONE → open() → IDLE → prepareAsync() → READY → play() → PLAYING
+// Máquina de estados AVPlay: NONE → open() → IDLE → prepareAsync() → READY → play() → PLAYING
+// Em DEV (PC), opera apenas em modo log (sem crash)
 
 const DEBUG = false
+
+// Resolução fixa Tizen para setDisplayRect
 const DISPLAY = { x: 0, y: 0, w: 1920, h: 1080 }
 
 export function isAVPlayAvailable(): boolean {
@@ -15,7 +18,7 @@ export function avplayLoad(
   onError: (msg: string) => void
 ): void {
   if (!isAVPlayAvailable()) {
-    console.log('[AVPlay DEV] PC — emulando sucesso.')
+    console.log('[AVPlay DEV] Sandbox de PC. API nativa inacessível — emulando sucesso.')
     setTimeout(onSuccess, 300)
     return
   }
@@ -23,28 +26,39 @@ export function avplayLoad(
   const avplay = (window as any).webapis.avplay
 
   try {
-    // 1. Limpar estado anterior
-    try { avplay.stop() } catch (_) {}
-    try { avplay.close() } catch (_) {}
+    // 1. Limpar estado anterior (se houver)
+    try {
+      avplay.stop()
+      avplay.close()
+    } catch {
+      // Ignorar — pode não ter nada aberto
+    }
 
     // 2. NONE → IDLE
     avplay.open(url)
-    console.log(`[AVPlay] open(${url.substring(0, 80)})`)
+    console.log(`[AVPlay] open(${url.substring(0, 80)}...)`)
 
-    // 3. ★ setDisplay ANTES do prepare — obrigtório para o hardware renderizar
-    //    'PLAYER' = renderiza dentro do elemento de vídeo nativo (z-index abaixo do HTML)
-    avplay.setDisplayMethod('PLAYER_EXTERNAL_OUTPUT')
-    avplay.setDisplay('OVERLAY', document.getElementById('av-player') ?? document.body)
+    // 3. Configurar display ANTES do prepare
     avplay.setDisplayRect(DISPLAY.x, DISPLAY.y, DISPLAY.w, DISPLAY.h)
-    console.log('[AVPlay] display configurado')
+    console.log(`[AVPlay] setDisplayRect(${DISPLAY.x},${DISPLAY.y},${DISPLAY.w},${DISPLAY.h})`)
 
-    // 4. Listeners
+    // 4. Registrar listeners ANTES do prepare
     avplay.setListener({
-      onbufferingstart:    () => console.log('[AVPlay] buffering...'),
-      onbufferingcomplete: () => console.log('[AVPlay] buffering ok'),
-      onstreamcompleted:   () => console.log('[AVPlay] stream fim'),
-      oncurrentplaytime:   (ms: number) => { if (DEBUG) console.log(`[AVPlay] ${ms}ms`) },
-      onevent: (type: string, data: string) => console.log(`[AVPlay] event ${type} ${data}`),
+      onbufferingstart: () => {
+        console.log('[AVPlay] buffering...')
+      },
+      onbufferingcomplete: () => {
+        console.log('[AVPlay] buffering complete')
+      },
+      onstreamcompleted: () => {
+        console.log('[AVPlay] stream completed')
+      },
+      oncurrentplaytime: (ms: number) => {
+        if (DEBUG) console.log(`[AVPlay] time: ${ms}ms`)
+      },
+      onevent: (type: string, data: string) => {
+        console.log(`[AVPlay] event: ${type} ${data}`)
+      },
       onerror: (errMsg: string) => {
         console.error('[AVPlay] erro nativo:', errMsg)
         onError(errMsg)
@@ -54,16 +68,21 @@ export function avplayLoad(
     // 5. IDLE → READY (assíncrono)
     avplay.prepareAsync(
       () => {
-        console.log('[AVPlay] prepare OK')
+        // Prepare concluído com sucesso → READY
+        console.log('[AVPlay] prepare OK → playing')
+
         try {
+          // 6. READY → PLAYING
           avplay.play()
-          console.log('[AVPlay] play()')
+          console.log('[AVPlay] play() acionado')
           onSuccess()
-        } catch (e: any) {
-          onError(e?.message ?? 'Erro no play()')
+        } catch (playErr: any) {
+          console.error('[AVPlay] erro no play():', playErr?.message ?? playErr)
+          onError(playErr?.message ?? 'Erro ao iniciar play')
         }
       },
       (err: any) => {
+        // Prepare falhou
         console.error('[AVPlay] prepareAsync falhou:', err)
         onError(typeof err === 'string' ? err : 'Erro no prepareAsync')
       }
@@ -83,5 +102,7 @@ export function avplayStop(): void {
     avplay.stop()
     avplay.close()
     console.log('[AVPlay] stopped & closed')
-  } catch (_) {}
+  } catch {
+    // Ignorar erros de stop quando nada estava tocando
+  }
 }
