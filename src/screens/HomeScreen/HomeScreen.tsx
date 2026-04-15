@@ -817,7 +817,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         {isLoadingContent && (
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(10px)',
+            background: 'rgba(0,0,0,0.85)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 80, transition: 'opacity 300ms',
           }}>
@@ -885,8 +885,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
-        * { outline: none !important; scrollbar-width: none; }
         *::-webkit-scrollbar { display: none; }
+        * { scrollbar-width: none; }
       `}</style>
     </div>
   )
