@@ -24,7 +24,7 @@ interface Props {
   onBack: () => void
 }
 
-type FocusZone = 'sidebar' | 'topbar' | 'hero' | 'content'
+type FocusZone = 'topbar' | 'hero' | 'content'
 type HeroState = 'default' | 'focused' | 'collapsed' | 'locked'
 type DashboardView = 'home' | 'movies' | 'series' | 'live'
 
@@ -266,19 +266,9 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       if (!(isDown || isUp || isRight || isLeft)) return
       e.preventDefault()
 
-      if (zone === 'sidebar') {
-        if (isDown) setSidebarIdx(i => Math.min(i + 1, SIDEBAR_ICONS.length - 1))
-        else if (isUp) setSidebarIdx(i => Math.max(i - 1, 0))
-        else if (isRight) setFocusZone('topbar')
-        return
-      }
-
       if (zone === 'topbar') {
         if (isRight) setTopbarIdx(i => Math.min(i + 1, TOPBAR_LINKS.length - 1))
-        else if (isLeft) {
-          if (topbarRef.current === 0) setFocusZone('sidebar')
-          else setTopbarIdx(i => Math.max(i - 1, 0))
-        }
+        else if (isLeft) setTopbarIdx(i => Math.max(i - 1, 0))
         else if (isDown) { setFocusZone('hero'); setHeroState('focused') }
         return
       }
@@ -313,9 +303,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Hero height ──────────────────────────────────────────────────────
-  const heroH = heroState === 'focused' ? '70vh'
-    : heroState === 'collapsed' || heroState === 'locked' ? '50vh'
-    : '44vh'
+  const heroH = focusZone === 'content' ? '200px' : '100vh'
 
   const ROW_HEIGHT = 320
   const contentOffset = focusZone === 'content' ? -(contentRow * ROW_HEIGHT) : 0
@@ -339,63 +327,19 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      background: BG, color: '#fff', display: 'flex',
+      background: BG, color: '#fff',
       fontFamily: "'Outfit', sans-serif", overflow: 'hidden',
     }}>
 
-      {/* SIDEBAR */}
-      <div style={{
-        width: 70, height: '100vh', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', padding: '30px 0',
-        borderRight: '1px solid rgba(255,255,255,0.05)',
-        zIndex: 100, transition: 'opacity 300ms',
-        opacity: focusZone === 'sidebar' ? 1 : 0.3,
-      }}>
-        <div style={{
-          fontWeight: 900, fontSize: 24, color: ACCENT, marginBottom: 60,
-          textShadow: `0 0 20px ${GLOW}`,
-        }}>z.</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
-          {SIDEBAR_ICONS.map((icon, i) => {
-            const active = focusZone === 'sidebar' && sidebarIdx === i
-            return (
-              <div key={i} style={{
-                position: 'relative', width: 40, height: 40,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '1.2rem',
-                color: active ? '#fff' : (activeView === icon.view ? ACCENT : TEXT_MUTED),
-                transition: 'all 200ms',
-              }}>
-                {active && <div style={{
-                  position: 'absolute', left: -15, width: 4, height: 20,
-                  background: ACCENT, borderRadius: '0 4px 4px 0',
-                  boxShadow: `0 0 15px ${GLOW}`,
-                }} />}
-                {icon.emoji}
-              </div>
-            )
-          })}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-          <div style={{ fontSize: '1.2rem', color: TEXT_MUTED }}>⚙️</div>
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%',
-            background: 'linear-gradient(135deg, #ff006e, #a855f7)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 14,
-          }}>👽</div>
-        </div>
-      </div>
-
       {/* VIEWPORT */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+      <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
 
-        {/* TOPBAR */}
+        {/* TOPBAR — flutuante */}
         <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 90,
           height: 72, display: 'flex', alignItems: 'center', padding: '0 80px',
-          background: 'rgba(0,0,0,0.1)',
-          borderBottom: '1px solid rgba(255,255,255,0.04)',
-          zIndex: 90, transition: 'opacity 400ms, transform 400ms',
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)',
+          transition: 'opacity 400ms, transform 400ms',
           opacity: focusZone === 'content' ? 0 : 1,
           transform: focusZone === 'content' ? 'translateY(-100%)' : 'translateY(0)',
           pointerEvents: focusZone === 'content' ? 'none' : 'auto',
@@ -427,139 +371,102 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           </div>
         </div>
 
-        {/* HERO */}
+        {/* HERO — Banner Apple TV */}
         <div style={{
           position: 'relative', width: '100%', height: heroH,
-          display: 'flex', flexDirection: 'column', justifyContent: 'center',
-          padding: '0 80px', overflow: 'hidden',
-          transition: 'height 400ms ease', flexShrink: 0,
+          display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+          overflow: 'hidden',
+          transition: 'height 400ms ease',
         }}>
-          <img src={heroBg || 'hero-alien.png'} style={{
-            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-            objectFit: 'cover', zIndex: 0,
-          }} />
+          {/* Backdrop GIGANTE */}
+          {(() => {
+            // Pega canal atual do heroSlide
+            const channels = heroChannels.length > 0 ? heroChannels : Object.values(groups).flat()
+            const ch = channels[heroSlide % channels.length]
+            
+            if (!ch) {
+              return <img src="hero-alien.png" style={{
+                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                objectFit: 'cover', zIndex: 0,
+              }} />
+            }
+            
+            const tmdb = heroTmdb.get(ch.name)
+            const backdrop = tmdb?.backdrop_path 
+              ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop_path}`
+              : ch.logo || 'hero-alien.png'
+            
+            console.log('[Hero] Canal:', ch.name, 'TMDB:', !!tmdb, 'Backdrop:', backdrop)
+            
+            return (
+              <img 
+                src={backdrop} 
+                alt={ch.name}
+                style={{
+                  position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+                  objectFit: 'cover', objectPosition: 'center 30%', zIndex: 0,
+                }}
+                onError={(e) => {
+                  console.log('[Hero] Erro ao carregar backdrop, usando fallback')
+                  e.currentTarget.src = 'hero-alien.png'
+                }}
+              />
+            )
+          })()}
+          
+          {/* Gradiente inferior */}
           <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'linear-gradient(90deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.6) 35%, transparent 65%)',
+            position: 'absolute', bottom: 0, left: 0, right: 0, height: '40%',
+            background: 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, transparent 100%)',
             zIndex: 1,
           }} />
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 40%)',
-            zIndex: 2,
-          }} />
 
-          <div style={{ position: 'relative', zIndex: 10, maxWidth: 800 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <div style={{
-                width: 8, height: 8, borderRadius: '50%', background: ACCENT,
-                boxShadow: `0 0 10px ${ACCENT}`,
-                animation: 'pulse-glow 1.5s infinite',
-              }} />
-              <span style={{
-                fontSize: 12, fontWeight: 700, letterSpacing: 2,
-                textTransform: 'uppercase', color: ACCENT,
-              }}>
-                {previewChannel ? 'ao vivo' : 'em destaque'}
-              </span>
-            </div>
-
+          {/* 7 CARDS — só aparecem quando NÃO está em content */}
+          {focusZone !== 'content' && (
             <div style={{
-              fontSize: 'clamp(40px, 4vw, 64px)', fontWeight: 900,
-              lineHeight: 0.9, letterSpacing: '-0.05em', textTransform: 'lowercase',
-              marginBottom: 16,
+              position: 'relative',
+              zIndex: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 16,
+              padding: '0 0 40px 0',
+              overflow: 'visible',
             }}>
-              {heroTitle}<br />
-              <span style={{ color: ACCENT, textShadow: `0 0 30px ${GLOW}` }}>{heroAccent}</span>
-            </div>
-
-            {(heroState === 'focused' || previewChannel) && (
-              <div style={{
-                display: 'flex', gap: 20, marginBottom: 20,
-                fontSize: 14, fontWeight: 600, color: TEXT_MUTED,
-              }}>
-                {heroRating > 0 && <span style={{ background: 'rgba(255,255,255,0.1)', padding: '4px 10px', borderRadius: 6 }}>⭐ {heroRating.toFixed(1)}</span>}
-                {heroYear && <span>{heroYear}</span>}
-                <span>HD</span>
-              </div>
-            )}
-
-            <div style={{
-              fontSize: 18, color: 'rgba(255,255,255,0.8)',
-              lineHeight: 1.6, maxWidth: 600, marginBottom: 24,
-              fontWeight: 400, textShadow: '0 2px 8px rgba(0,0,0,0.8)',
-            }}>
-              {heroDesc}
-            </div>
-
-            <div style={{ display: 'flex', gap: 16 }}>
-              <div
-                onClick={() => previewChannel && onPlay(previewChannel)}
-                style={{
-                  background: ACCENT, color: '#fff',
-                  padding: '14px 36px', borderRadius: 100,
-                  fontWeight: 800, fontSize: 15, textTransform: 'lowercase',
-                  boxShadow: `0 10px 30px ${GLOW}`, cursor: 'pointer',
-                  border: focusZone === 'hero' ? `2px solid ${ACCENT}` : '2px solid transparent',
-                  transform: focusZone === 'hero' ? 'scale(1.05)' : 'scale(1)',
-                  transition: 'all 200ms',
-                }}
-              >
-                ▶ assistir agora
-              </div>
-              <div style={{
-                background: 'rgba(255,255,255,0.05)', color: '#fff',
-                padding: '14px 36px', borderRadius: 100,
-                fontWeight: 800, fontSize: 15, textTransform: 'lowercase',
-                border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer',
-              }}>
-                + minha lista
-              </div>
-            </div>
-          </div>
-
-          {/* Stats card */}
-          <div style={{
-            position: 'absolute', top: '15%', right: '10%',
-            background: '#fff', color: '#000', padding: 30,
-            borderRadius: 24, zIndex: 20,
-            boxShadow: '0 30px 60px rgba(0,0,0,0.5)', maxWidth: 180,
-            display: focusZone === 'content' ? 'none' : 'block',
-          }}>
-            <div style={{ fontSize: 36, fontWeight: 900, marginBottom: 4 }}>
-              {Object.values(groups).reduce((a, c) => a + c.length, 0).toLocaleString()}
-            </div>
-            <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 12 }}>canais disponíveis</div>
-            <div style={{
-              width: 36, height: 36, borderRadius: '50%',
-              background: ACCENT, display: 'flex',
-              alignItems: 'center', justifyContent: 'center',
-              fontSize: 16, color: '#fff',
-            }}>→</div>
-          </div>
-
-          {/* Hero dots */}
-          {!previewChannel && (
-            <div style={{
-              position: 'absolute', bottom: 28, left: 0, right: 0,
-              display: 'flex', gap: 10, justifyContent: 'center', zIndex: 20,
-            }}>
-              {Array.from({ length: maxSlides }).map((_, i) => {
-                const active = heroSlide === i
-                const fallback = HERO_SLIDES[i % HERO_SLIDES.length]
+              {[-3, -2, -1, 0, 1, 2, 3].map((offset) => {
+                const channels = heroChannels.length > 0 ? heroChannels : Object.values(groups).flat()
+                const idx = (heroSlide + offset + channels.length * 10) % channels.length
+                const ch = channels[idx]
+                if (!ch) return null
+                
+                const tmdb = heroTmdb.get(ch.name)
+                const poster = tmdb?.poster_path 
+                  ? `https://image.tmdb.org/t/p/w300${tmdb.poster_path}`
+                  : ch.logo || `https://via.placeholder.com/150x225/333/fff?text=${encodeURIComponent(ch.name.slice(0,3))}`
+                
+                const isCentral = offset === 0
+                
                 return (
-                  <div key={i} style={{
-                    width: 32, height: 32, borderRadius: '50%',
-                    border: active ? `1px solid ${ACCENT}` : '1px solid rgba(255,255,255,0.15)',
-                    background: active ? ACCENT : 'rgba(0,0,0,0.4)',
-                    color: active ? '#fff' : 'rgba(255,255,255,0.3)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 14,
-                    transition: 'all 350ms cubic-bezier(0.34,1.56,0.64,1)',
-                    transform: active ? 'scale(1.2)' : 'scale(1)',
-                    boxShadow: active ? `0 0 16px ${GLOW}` : 'none',
+                  <div key={`${idx}-${offset}`} style={{
+                    width: 150,
+                    height: 225,
+                    borderRadius: 8,
+                    overflow: 'hidden',
+                    border: isCentral ? `3px solid ${ACCENT}` : '3px solid rgba(255,255,255,0.3)',
+                    boxShadow: isCentral ? `0 8px 32px ${GLOW}` : '0 4px 16px rgba(0,0,0,0.5)',
+                    transition: 'all 300ms ease',
+                    flexShrink: 0,
+                    opacity: isCentral ? 1 : 0.7,
+                    background: '#222',
                   }}>
-                    {fallback?.icon || '●'}
+                    <img 
+                      src={poster} 
+                      alt={ch.name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none'
+                      }}
+                    />
                   </div>
                 )
               })}
@@ -567,11 +474,13 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           )}
         </div>
 
-        {/* ROWS */}
+        {/* ROWS — ficam logo abaixo do hero */}
         <div style={{
+          position: focusZone === 'content' ? 'relative' : 'absolute',
+          top: focusZone === 'content' ? 0 : '100vh',
+          width: '100%',
           transform: `translateY(${contentOffset}px)`,
           transition: 'transform 500ms cubic-bezier(0.4,0,0.2,1)',
-          flexShrink: 0,
         }}>
           {rows.map((row, rowIdx) => (
             <div key={rowIdx} style={{ padding: '24px 0', overflow: 'visible' }}>
