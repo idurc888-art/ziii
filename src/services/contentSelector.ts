@@ -175,7 +175,8 @@ export async function buildHomeContent(groups: NormalizedGroups): Promise<Screen
       heroTmdb.set(ch.name, {
         title: 'ziiiTV', year: '2024', rating: 9.9,
         overview: 'Seu universo de entretenimento alienígena. Milhares de canais ao vivo, filmes e séries.',
-        poster: '', backdrop: '/banner-ziii.jpg'
+        poster: '', backdrop: '/banner-ziii.jpg',
+        tmdbId: 0, mediaType: 'movie', trailerKey: '',
       })
     } else {
       heroTmdb.set(ch.name, tmdbResults.get(ch.name) || null)

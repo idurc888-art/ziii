@@ -10,6 +10,8 @@ import {
   buildTvContent 
 } from '../../services/contentSelector'
 import { recordPlay } from '../../services/historyService'
+import { HeroBanner } from '../../components/HeroBanner/HeroBanner'
+import { mockHeroSlides } from '../../components/HeroBanner/heroData'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Channel {
@@ -51,14 +53,6 @@ const TOPBAR_LINKS: Array<{ label: string; view: DashboardView }> = [
   { label: 'tv ao vivo', view: 'live' },
 ]
 
-const HERO_SLIDES = [
-  { title: 'ziiiTV', accent: 'o melhor', rest: 'player', icon: '📺', desc: 'Seu universo de entretenimento alienígena. Milhares de canais ao vivo.' },
-  { title: 'invasão', accent: 'cerebral', rest: 'ziiiTV', icon: '👾', desc: 'O melhor conteúdo de filmes, séries e esportes ao vivo.' },
-  { title: 'domínio', accent: 'digital', rest: 'ziiiTV', icon: '📺', desc: 'Streaming de alta qualidade direto na sua Smart TV.' },
-  { title: 'visão', accent: 'infinita', rest: 'ziiiTV', icon: '♾️', desc: 'Navegação fluida. Categorias inteligentes. Controle total.' },
-  { title: 'universo', accent: 'ziiiTV', rest: 'é seu', icon: '🚀', desc: 'O futuro do entretenimento já começou.' },
-]
-
 const CATEGORY_ICONS: Record<string, { emoji: string; color: string }> = {
   filmes: { emoji: '🎬', color: '#a78bfa' },
   series: { emoji: '📺', color: '#60a5fa' },
@@ -77,7 +71,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   // ─── State ──────────────────────────────────────────────────────────────
   const [focusZone, setFocusZone] = useState<FocusZone>('hero')
   const [heroState, setHeroState] = useState<HeroState>('default')
-  const [heroSlide, setHeroSlide] = useState(0)
   const [sidebarIdx, setSidebarIdx] = useState(0)
   const [topbarIdx, setTopbarIdx] = useState(0)
   const [contentRow, setContentRow] = useState(0)
@@ -107,7 +100,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         setIsLoadingContent(false)
         setContentRow(0)
         setContentCols(new Array(data.rows.length).fill(0))
-        setHeroSlide(0)
       }
     }
 
@@ -116,8 +108,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   }, [groups, activeView])
 
   const rows: ContentRow[] = content?.rows || []
-  const heroTmdb = content?.heroTmdb || new Map()
-  const heroChannels = content?.heroChannels || []
 
   const [liveTmdbData, setLiveTmdbData] = useState<Record<string, TMDBResult | null>>({})
   const [debouncedPreview, setDebouncedPreview] = useState<Channel | null>(null)
@@ -145,21 +135,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     }
   }, [debouncedPreview, contentRow, rows, liveTmdbData])
 
-  const previewTmdb: TMDBResult | null = debouncedPreview
-    ? (liveTmdbData[debouncedPreview.name] !== undefined 
-         ? liveTmdbData[debouncedPreview.name] 
-         : (rows[contentRow]?.tmdb?.get(debouncedPreview.name) || null))
-    : null
-  const heroChForSlide = heroChannels[heroSlide % Math.max(heroChannels.length, 1)] || null
-  const heroSlideTmdb = heroChForSlide ? (heroTmdb.get(heroChForSlide.name) || null) : null
-
-  // ─── Final Backdrop Selection (Debounced) ─────────────────────────────
-  const finalActiveTmdb = previewTmdb || heroSlideTmdb
-  const finalActiveChannel = debouncedPreview || heroChForSlide
-  const currentHeroBg = finalActiveTmdb?.backdrop || (debouncedPreview ? '' : 'hero-alien.png')
-
-
-
   // ─── Refs ─────────────────────────────────────────────────────────────
   const focusZoneRef = useRef(focusZone)
   const heroStateRef = useRef(heroState)
@@ -170,7 +145,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const rowsRef = useRef(rows)
   const showExitRef = useRef(showExit)
   const exitFocusRef = useRef(exitFocus)
-  const heroSlideRef = useRef(heroSlide)
 
   focusZoneRef.current = focusZone
   heroStateRef.current = heroState
@@ -181,18 +155,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   rowsRef.current = rows
   showExitRef.current = showExit
   exitFocusRef.current = exitFocus
-  heroSlideRef.current = heroSlide
-
-  // ─── Hero auto-slide ──────────────────────────────────────────────────
-  const maxSlides = heroChannels.length > 0 ? heroChannels.length : HERO_SLIDES.length
-  useEffect(() => {
-    if (focusZone !== 'hero' && focusZone !== 'topbar' && focusZone !== 'sidebar') return
-    if (previewChannel) return
-    const iv = setInterval(() => {
-      setHeroSlide(s => (s + 1) % maxSlides)
-    }, 8000)
-    return () => clearInterval(iv)
-  }, [focusZone, previewChannel, maxSlides])
 
   // ─── Scroll cards into view ───────────────────────────────────────────
   const rowRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -298,8 +260,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       if (zone === 'hero') {
         if (isUp) { setFocusZone('topbar'); setHeroState('default') }
         else if (isDown) { setFocusZone('content'); setHeroState('collapsed'); setContentRow(0) }
-        else if (isRight) setHeroSlide(s => (s + 1) % maxSlides)
-        else if (isLeft)  setHeroSlide(s => (s - 1 + maxSlides) % maxSlides)
+        // As setas esquerda/direita são tratadas pelo próprio HeroBanner
         return
       }
 
@@ -324,23 +285,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     return () => document.removeEventListener('keydown', onKey)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Hero height ──────────────────────────────────────────────────────
-  const heroH = focusZone === 'content' ? '200px' : '100vh'
-
   const ROW_HEIGHT = 320
   const contentOffset = focusZone === 'content' ? -(contentRow * ROW_HEIGHT) : 0
-
-  // ─── Metadata Selection ─────────────────────────────────────────────
-  const fallbackSlide = HERO_SLIDES[heroSlide % HERO_SLIDES.length]
-  const heroDisplayTitle = finalActiveChannel
-    ? (finalActiveTmdb?.title || finalActiveChannel.name)
-    : fallbackSlide.title
-  const heroDisplayAccent = finalActiveChannel
-    ? finalActiveChannel.group
-    : fallbackSlide.accent
-  const heroDisplayDesc = finalActiveTmdb?.overview || (finalActiveChannel ? finalActiveChannel.name : fallbackSlide.desc)
-  const heroDisplayRating = finalActiveTmdb?.rating || 0
-  const heroDisplayYear = finalActiveTmdb?.year || ''
 
   // ═══════════════════════════════════════════════════════════════════════
   // RENDER
@@ -392,140 +338,36 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           </div>
         </div>
 
+        {/* HERO BANNER Apple TV Style */}
         <div style={{
-          position: 'relative', width: '100%', height: heroH,
-          display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+          position: 'relative',
+          width: '100%',
+          height: focusZone === 'content' ? '200px' : '60vh',
+          minHeight: focusZone === 'content' ? '200px' : '400px',
           overflow: 'hidden',
           transition: 'height 500ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}>
-          {/* Backdrop Layers (Crossfade + Ken Burns lightweight) */}
-          <div style={{ position: 'absolute', inset: 0, background: '#000', zIndex: 0, overflow: 'hidden' }}>
-            <img 
-              src="hero-alien.png" 
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.1 }} 
-            />
-            {currentHeroBg && (
-              <img 
-                key={currentHeroBg}
-                src={currentHeroBg} 
-                style={{ 
-                  position: 'absolute', inset: 0, width: '100%', height: '100%',
-                  objectFit: 'cover',
-                  animation: 'kenBurnsHero 25s ease-in-out infinite alternate, fadeInHero 800ms ease-out',
-                  willChange: 'transform, opacity',
-                }} 
-              />
-            )}
-            
-            {/* Gradiente Apple-style */}
-            <div style={{
-              position: 'absolute', inset: 0,
-              background: 'linear-gradient(to top, #000 0%, transparent 60%, rgba(0,0,0,0.4) 100%)',
-              zIndex: 1,
-            }} />
-          </div>
-
-          <div style={{
-            position: 'relative', zIndex: 10, padding: '0 80px 40px',
-            display: 'flex', flexDirection: 'column', gap: 10,
-            transition: 'opacity 500ms ease',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {heroDisplayRating > 0 && (
-                <div style={{ 
-                  color: '#4ade80', fontWeight: 900, fontSize: '1.1rem',
-                  display: 'flex', alignItems: 'center', gap: 4
-                }}>
-                  ★ {heroDisplayRating.toFixed(1)}
-                </div>
-              )}
-              {heroDisplayYear && (
-                <div style={{ color: '#fff', fontSize: '1.1rem', fontWeight: 700 }}>
-                  {heroDisplayYear}
-                </div>
-              )}
-            </div>
-            
-            <div style={{ 
-              fontSize: '3.8rem', fontWeight: 900, textTransform: 'lowercase', 
-              lineHeight: 1, letterSpacing: -2,
-            }}>
-              {heroDisplayTitle}
-            </div>
-            
-            <div style={{ 
-              fontSize: '1.2rem', color: ACCENT, fontWeight: 800, 
-              textTransform: 'uppercase', letterSpacing: 2 
-            }}>
-              {heroDisplayAccent}
-            </div>
-
-            <div style={{ 
-              fontSize: '1.1rem', color: 'rgba(255,255,255,0.7)', 
-              maxWidth: 700, lineHeight: 1.5,
-              display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
-              overflow: 'hidden', height: '4.5rem',
-            }}>
-              {heroDisplayDesc}
-            </div>
-          </div>
-          {/* CARROSSEL FLUIDO — janela virtual de 7 cards */}
-          {focusZone !== 'content' && (
-            <div style={{
-              position: 'relative',
-              zIndex: 10,
-              marginBottom: 40,
-              width: '100%',
-              display: 'flex',
-              justifyContent: 'center',
-              overflow: 'hidden',
-            }}>
-              <div style={{
-                display: 'flex',
-                gap: 20,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-                {[-3, -2, -1, 0, 1, 2, 3].map((offset) => {
-                  const pool = heroChannels.length > 0 ? heroChannels : Object.values(groups).flat().slice(0, 20)
-                  if (pool.length === 0) return null
-                  const idx = ((heroSlide + offset) % pool.length + pool.length) % pool.length
-                  const ch = pool[idx]
-                  if (!ch) return null
-                  const isCentral = offset === 0
-                  const tmdb = heroTmdb.get(ch.name)
-                  const poster = tmdb?.poster 
-                    ? tmdb.poster
-                    : ch.logo || `https://via.placeholder.com/150x225/333/fff?text=${encodeURIComponent(ch.name.slice(0,3))}`
-                  
-                  return (
-                    <div key={`hero-${offset}`} style={{
-                      width: 150,
-                      height: 225,
-                      borderRadius: 12,
-                      overflow: 'hidden',
-                      border: isCentral ? `3px solid ${ACCENT}` : '2px solid rgba(255,255,255,0.15)',
-                      boxShadow: isCentral ? `0 12px 40px ${GLOW}` : '0 4px 12px rgba(0,0,0,0.5)',
-                      transform: isCentral ? 'scale(1.12) translateY(-8px)' : 'scale(0.9)',
-                      transition: 'transform 500ms cubic-bezier(0.23,1,0.32,1), opacity 400ms ease, border-color 300ms ease, box-shadow 300ms ease',
-                      flexShrink: 0,
-                      opacity: isCentral ? 1 : (Math.abs(offset) === 1 ? 0.6 : 0.3),
-                      zIndex: isCentral ? 20 : 10 - Math.abs(offset),
-                      background: '#111',
-                      willChange: 'transform, opacity',
-                    }}>
-                      <img 
-                        src={poster} 
-                        alt={ch.name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
+          <HeroBanner
+            slides={mockHeroSlides}
+            autoPlayInterval={7000}
+            onSelect={(slide) => {
+              console.log('HeroBanner: selecionado', slide.title);
+              // Aqui você pode implementar a lógica para reproduzir o conteúdo
+              if (slide.type === 'live') {
+                // Buscar canal correspondente
+                const channel = Object.values(groups).flat().find(ch => 
+                  ch.name.includes(slide.title) || slide.title.includes(ch.name)
+                );
+                if (channel) {
+                  onPlay(channel);
+                }
+              }
+            }}
+            onAddToList={(slide) => {
+              console.log('HeroBanner: adicionar à lista', slide.title);
+              // Implementar lógica para adicionar aos favoritos
+            }}
+          />
         </div>
 
         {/* ROWS — ficam logo abaixo do hero */}

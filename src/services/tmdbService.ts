@@ -23,6 +23,9 @@ export interface TMDBResult {
   rating: number    // 0-10
   year: string      // ano de lançamento
   title: string     // título oficial
+  tmdbId: number    // ID interno TMDB
+  mediaType: 'movie' | 'tv'  // tipo de mídia
+  trailerKey: string // YouTube key (preenchido sob demanda)
 }
 
 interface CacheEntry {
@@ -144,6 +147,9 @@ async function fetchTMDB(query: string, type: 'movie' | 'tv'): Promise<TMDBResul
       rating: item.vote_average || 0,
       year: (item.release_date || item.first_air_date || '').substring(0, 4),
       title: item.title || item.name || query,
+      tmdbId: item.id || 0,
+      mediaType: type,
+      trailerKey: '',
     }
   } catch (e) {
     console.warn(`[TMDB] Erro ao buscar "${query}":`, e)
@@ -236,11 +242,70 @@ export async function enrichBatch(
   return results
 }
 
+// ─── Cache de trailers em memória ───────────────────────────────────────────
+const trailerCache = new Map<number, string>()
+
+/**
+ * Busca a key do trailer no YouTube via TMDB Videos API.
+ * Retorna a YouTube key ou string vazia se não encontrou.
+ * Cache em memória para evitar chamadas repetidas.
+ */
+export async function fetchTrailerKey(tmdbId: number, mediaType: 'movie' | 'tv'): Promise<string> {
+  if (!tmdbId) return ''
+  if (trailerCache.has(tmdbId)) return trailerCache.get(tmdbId) || ''
+
+  const endpoint = mediaType === 'movie' ? `/movie/${tmdbId}/videos` : `/tv/${tmdbId}/videos`
+  const url = `${BASE_URL}${endpoint}?api_key=${API_KEY}&language=pt-BR`
+
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return ''
+
+    const data = await res.json()
+    const videos = data.results || []
+
+    // Prioridade: Trailer oficial em PT-BR, depois EN
+    let trailer = videos.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube' && v.official)
+    if (!trailer) trailer = videos.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube')
+    if (!trailer) trailer = videos.find((v: any) => v.site === 'YouTube')
+
+    const key = trailer?.key || ''
+    trailerCache.set(tmdbId, key)
+
+    if (key) {
+      console.log(`[TMDB] 🎬 Trailer encontrado: ${mediaType}/${tmdbId} → ${key}`)
+    }
+
+    // Se não achou em PT-BR, tenta em inglês
+    if (!key) {
+      const urlEn = `${BASE_URL}${endpoint}?api_key=${API_KEY}&language=en-US`
+      const resEn = await fetch(urlEn)
+      if (resEn.ok) {
+        const dataEn = await resEn.json()
+        const videosEn = dataEn.results || []
+        let trailerEn = videosEn.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube' && v.official)
+        if (!trailerEn) trailerEn = videosEn.find((v: any) => v.type === 'Trailer' && v.site === 'YouTube')
+        if (!trailerEn) trailerEn = videosEn.find((v: any) => v.site === 'YouTube')
+        const keyEn = trailerEn?.key || ''
+        trailerCache.set(tmdbId, keyEn)
+        if (keyEn) console.log(`[TMDB] 🎬 Trailer (EN): ${mediaType}/${tmdbId} → ${keyEn}`)
+        return keyEn
+      }
+    }
+
+    return key
+  } catch (e) {
+    console.warn(`[TMDB] Erro ao buscar trailer:`, e)
+    return ''
+  }
+}
+
 /**
  * Limpa o cache TMDB (memória + IndexedDB).
  */
 export async function clearTmdbCache(): Promise<void> {
   memoryCache.clear()
+  trailerCache.clear()
   try {
     const db = await openTmdbDB()
     return new Promise((resolve, reject) => {
