@@ -9,7 +9,7 @@ const IMG_BASE = 'https://image.tmdb.org/t/p'
 
 // Tamanhos de imagem
 const POSTER_SIZE = '/w342'   // cards
-const BACKDROP_SIZE = '/w1280' // hero
+const BACKDROP_SIZE = '/w780' // hero (otimizado para performance)
 
 // Cache TTL
 const TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 dias

@@ -14,7 +14,7 @@ export function isAVPlayAvailable(): boolean {
 //   Sem isso o vídeo vai para fullscreen nativo SEM composição com o HTML.
 export function avplayLoad(
   url: string,
-  objectId: string,
+  _objectId: string,
   onSuccess: () => void,
   onError: (msg: string) => void
 ): void {

@@ -15,7 +15,7 @@ export default function DebugOverlay() {
   const [visible, setVisible] = useState(true)
   const logsRef = useRef<LogEntry[]>([])
   const batchRef = useRef<LogEntry[]>([])
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const timerRef = useRef<any>(undefined)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
