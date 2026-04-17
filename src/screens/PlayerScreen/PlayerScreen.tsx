@@ -94,7 +94,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
   const inFlightRef   = useRef(false)
   const retryCountRef = useRef(0)
 
-  const streamUrl = channel.activeStream.url
+  const streamUrl = channel.activeStream?.url || (channel as any).url || ''
   const backend  = selectPlayerBackend(streamUrl)
   const isAVPlay = backend === 'avplay'
 

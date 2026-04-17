@@ -560,14 +560,14 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                             border: isFocused ? FOCUS_BORDER : '1px solid rgba(255,255,255,0.08)',
                             background: '#111',
                           }}>
-                            {/* Backdrop wide \u2014 sempre presente (carregado, est\u00e1tico) */}
-                            <img src={backdropSrc} style={{
+                            {/* Backdrop wide — sempre presente (carregado, estático) */}
+                            <img src={backdropSrc || undefined} style={{
                               position: 'absolute', left: 0, top: 0,
                               width: WIDE_W, height: CARD_H, objectFit: 'cover',
                               zIndex: 1, display: 'block',
                             }} />
-                            {/* Poster portrait \u2014 some INSTANTANEAMENTE quando focado (sem transition) */}
-                            <img src={posterSrc} style={{
+                            {/* Poster portrait — some INSTANTANEAMENTE quando focado (sem transition) */}
+                            <img src={posterSrc || undefined} style={{
                               position: 'absolute', left: 0, top: 0,
                               width: CARD_W, height: CARD_H, objectFit: 'cover',
                               zIndex: 2, display: 'block',

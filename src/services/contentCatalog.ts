@@ -35,7 +35,7 @@ function calcScore(ch: Channel, tmdb: TMDBResult | null): number {
   if (!hasJunk) score += 10
 
   // Stream premium disponível (0-5 pts)
-  const hasPremium = ch.streams.some(s => s.quality === '4K' || s.quality === 'FHD')
+  const hasPremium = ch.streams?.some(s => s.quality === '4K' || s.quality === 'FHD') || false
   if (hasPremium) score += 5
 
   return Math.round(score)
