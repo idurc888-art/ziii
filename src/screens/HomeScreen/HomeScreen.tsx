@@ -130,7 +130,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             description: `Assista ${ch.name} ao vivo na ziiiTV.`,
             badge: 'Ao Vivo',
             backgroundImage: ch.logo || `https://picsum.photos/1920/1080?random=${idx + 100}`,
-            type: 'live'
+            type: 'live',
+            channel: ch
           })))
         } else {
           setHeroSlides(data.heroChannels.map((ch, idx) => {
@@ -145,7 +146,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                 ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop}`
                 : `https://picsum.photos/1920/1080?random=${idx + 200}`,
               type: activeView === 'movies' ? 'movie' : 'series',
-              tmdbId: tmdb?.tmdbId || undefined
+              tmdbId: tmdb?.tmdbId || undefined,
+              channel: ch
             }
           }))
         }

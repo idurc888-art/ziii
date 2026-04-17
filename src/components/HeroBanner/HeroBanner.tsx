@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import type { Channel } from '../../types/channel';
+import { useStreamPreview } from '../../hooks/useStreamPreview';
 import './HeroBanner.css';
 
 export interface HeroSlide {
@@ -11,6 +13,7 @@ export interface HeroSlide {
   videoUrl?: string;
   type: 'movie' | 'series' | 'live';
   tmdbId?: number; // Para conectar com TMDB/Youtube
+  channel?: Channel; // Canal físico M3U para autoplay
 }
 
 interface HeroBannerProps {
@@ -50,6 +53,19 @@ export function HeroBanner({
   const progressRef = useRef<HTMLDivElement>(null);
   const autoPlayTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastKeyPressRef = useRef<number>(0);
+
+  // Hook nativo AVPlay para Background Video
+  const currentSlideValid = extendedSlides[currentIndex];
+  const { videoStyle, backdropStyle } = useStreamPreview(
+    currentSlideValid?.channel || null,
+    focused,
+    {
+      idleDelay: 1500,
+      previewDuration: 15000,
+      seekToMs: 270000,
+      fadeDuration: 400,
+    }
+  );
 
   // Parallax no background
   const updateParallax = useCallback(() => {
@@ -193,6 +209,15 @@ export function HeroBanner({
 
   return (
     <div className={`hero-viewport${focused ? ' hero-focused' : ''}`}>
+      <object
+        id="av-hero-player"
+        type="application/avplayer"
+        style={{
+          position: 'absolute', inset: 0, width: '100%', height: '100%',
+          zIndex: 0, pointerEvents: 'none',
+          ...videoStyle
+        }}
+      />
       <div
         ref={trackRef}
         className="hero-track"
@@ -215,7 +240,8 @@ export function HeroBanner({
                   backgroundImage: `url(${slide.backgroundImage})`,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
-                  zIndex: 1
+                  zIndex: 1,
+                  ...(isActive ? backdropStyle : {})
                 }}
               />
               <div className="hero-overlay" style={{ zIndex: 2 }} />
