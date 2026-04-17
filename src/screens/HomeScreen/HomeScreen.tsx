@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import type { UICategory } from '../../services/categoryMapper'
 import type { ContentRow, ScreenContent } from '../../services/contentSelector'
 import type { TMDBResult } from '../../services/tmdbService'
@@ -39,8 +39,6 @@ const TEXT_MUTED = '#a0a0a0'
 
 /** Altura do banner quando visível */
 const HERO_H = '87vh'
-/** Altura do banner colapsado (mantém espaço mínimo = 0 para dar scroll natural) */
-const HERO_H_COLLAPSED = '0px'
 
 const SIDEBAR_ICONS: Array<{ emoji: string; label: string; view?: DashboardView }> = [
   { emoji: '🏠', label: 'home',     view: 'home'   },
@@ -145,7 +143,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
               backgroundImage: tmdb?.backdrop
                 ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop}`
                 : `https://picsum.photos/1920/1080?random=${idx + 200}`,
-              type: activeView === 'movies' ? 'movie' : 'series'
+              type: activeView === 'movies' ? 'movie' : 'series',
+              tmdbId: tmdb?.tmdbId || undefined
             }
           }))
         }
@@ -178,21 +177,15 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     }
   }, [debouncedPreview, contentRow, rows, liveTmdbData])
 
-  // ─── Hero Trailer ─────────────────────────────────────────────────────
-  const currentHeroItem: TMDBResult | null = mockHeroSlides[0] ? {
-    tmdbId: 1,
-    title: mockHeroSlides[0].title,
-    poster: mockHeroSlides[0].backgroundImage,
-    backdrop: mockHeroSlides[0].backgroundImage,
-    overview: mockHeroSlides[0].description,
-    rating: 8.0, year: '2024', mediaType: 'movie', trailerKey: ''
-  } : null
+  // ─── Hero Trailer Prefetch ────────────────────────────────────────────
+  const heroPrefetchItems = useMemo(() => {
+    return heroSlides.filter(s => s.tmdbId).map(s => ({
+      tmdbId: s.tmdbId,
+      mediaType: s.type === 'movie' ? 'movie' : 'tv',
+    }) as TMDBResult)
+  }, [heroSlides])
 
-  useHeroTrailer(currentHeroItem, {
-    idleDelay: 2500, fadeDuration: 800,
-    isHeroVisible: focusZone !== 'content',
-    focusZone,
-  })
+  const { trailerKeysMap } = useHeroTrailer(heroPrefetchItems, null, { fadeDuration: 300 })
 
   // ─── Refs ─────────────────────────────────────────────────────────────
   const focusZoneRef   = useRef(focusZone)
@@ -236,7 +229,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         wrapper.scrollTo({ top: 0, behavior: 'smooth' })
       } else {
         const rowTop  = row.offsetTop
-        wrapper.scrollTo({ top: rowTop - 16, behavior: 'smooth' })
+        // subtraindo 8 para igualar perfeitamente os 8px de padding-top que a primeira linha tem
+        wrapper.scrollTo({ top: rowTop - 8, behavior: 'smooth' })
       }
     }
   }, [contentRow, focusZone])
@@ -446,6 +440,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             slides={heroSlides}
             autoPlayInterval={9000}
             focused={focusZone === 'hero'}
+            trailerKeysMap={trailerKeysMap}
+            trailerFadeDuration={300}
             onSelect={(slide) => {
               if (slide.type === 'live') {
                 const channel = Object.values(groups).flat().find(ch =>
@@ -579,10 +575,22 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                             }}>
                               {(() => {
                                 const t   = row.tmdb?.get(ch.name)
-                                const src = t?.poster || ch.logo
-                                return src
-                                  ? <img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                  : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>📺</div>
+                                const posterSrc = t?.poster || ch.logo
+                                const backdropSrc = t?.backdrop ? `https://image.tmdb.org/t/p/w780${t.backdrop}` : posterSrc
+                                return (
+                                  <>
+                                    <img src={backdropSrc} style={{
+                                      position: 'absolute', left: 0, top: 0,
+                                      width: 840, height: 475, objectFit: 'cover', zIndex: 1
+                                    }} />
+                                    <img src={posterSrc} style={{
+                                      position: 'absolute', left: 0, top: 0,
+                                      width: 317, height: 475, objectFit: 'cover', zIndex: 2,
+                                      opacity: isFocused ? 0 : 1,
+                                      transition: `opacity 150ms ease-out`
+                                    }} />
+                                  </>
+                                )
                               })()}
                             </div>
                             <div style={{

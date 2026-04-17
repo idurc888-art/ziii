@@ -10,16 +10,18 @@ interface UseHeroTrailerOptions {
 }
 
 export function useHeroTrailer(
+  allItems: TMDBResult[],
   currentItem: TMDBResult | null,
   options: UseHeroTrailerOptions = {}
 ) {
   const {
-    idleDelay = 2500, // 2.5 segundos
-    fadeDuration = 800, // 0.8 segundos para fade
+    idleDelay = 500, // 500ms Netflix-style
+    fadeDuration = 300, // 300ms fade
     isHeroVisible = true,
     focusZone = 'hero'
   } = options;
 
+  const [trailerKeys, setTrailerKeys] = useState<Record<number, string>>({});
   const [trailerKey, setTrailerKey] = useState<string>('');
   const [isTrailerLoading, setIsTrailerLoading] = useState<boolean>(false);
   const [isTrailerVisible, setIsTrailerVisible] = useState<boolean>(false);
@@ -27,7 +29,7 @@ export function useHeroTrailer(
 
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const lastTmdbIdRef = useRef<number>(0);
+  const prefetchedRef = useRef<Set<number>>(new Set());
 
   // Limpar timers
   const clearTimers = () => {
@@ -41,7 +43,7 @@ export function useHeroTrailer(
     }
   };
 
-  // Resetar trailer
+  // Resetar trailer state
   const resetTrailer = () => {
     clearTimers();
     setIsTrailerVisible(false);
@@ -50,69 +52,84 @@ export function useHeroTrailer(
     setTrailerError(false);
   };
 
-  // Buscar trailer do TMDB
-  const fetchTrailer = async (tmdbId: number, mediaType: 'movie' | 'tv') => {
-    if (!tmdbId || lastTmdbIdRef.current === tmdbId) return;
-    
-    setIsTrailerLoading(true);
-    setTrailerError(false);
-    lastTmdbIdRef.current = tmdbId;
-
-    try {
-      const key = await fetchTrailerKey(tmdbId, mediaType);
-      
-      if (key && lastTmdbIdRef.current === tmdbId) {
-        setTrailerKey(key);
-        
-        // Aguardar um pouco para o iframe carregar antes do fade
-        fadeTimerRef.current = setTimeout(() => {
-          if (lastTmdbIdRef.current === tmdbId) {
-            setIsTrailerVisible(true);
-          }
-        }, 500);
-      } else {
-        setTrailerError(true);
-      }
-    } catch (error) {
-      console.warn('[useHeroTrailer] Erro ao buscar trailer:', error);
-      setTrailerError(true);
-    } finally {
-      setIsTrailerLoading(false);
-    }
-  };
-
-  // Efeito principal: controlar idle timer e buscar trailer
+  // 1. Prefetch all trailers as requested
   useEffect(() => {
-    // Resetar sempre que o item mudar
+    let mounted = true;
+    const prefetchTrailers = async (items: TMDBResult[]) => {
+      const fetchPromises = items.map(async (slide) => {
+        if (!slide.tmdbId || prefetchedRef.current.has(slide.tmdbId)) return null;
+        prefetchedRef.current.add(slide.tmdbId);
+
+        try {
+          const key = await fetchTrailerKey(slide.tmdbId, slide.mediaType);
+          if (key) return { id: slide.tmdbId, key };
+        } catch (e) {
+          console.warn('[useHeroTrailer] Erro prefetch:', e);
+        }
+        return null;
+      });
+
+      const results = await Promise.all(fetchPromises);
+      if (!mounted) return;
+
+      const newKeys: Record<number, string> = {};
+      let hasNew = false;
+      results.forEach(res => {
+        if (res) {
+          newKeys[res.id] = res.key;
+          hasNew = true;
+        }
+      });
+
+      if (hasNew) {
+        setTrailerKeys(prev => ({ ...prev, ...newKeys }));
+      }
+    };
+
+    if (allItems.length > 0) {
+      prefetchTrailers(allItems);
+    }
+    return () => { mounted = false; };
+  }, [allItems]);
+
+  // Efeito principal: controlar idle timer
+  useEffect(() => {
     resetTrailer();
 
-    // Condições para não buscar trailer:
-    // 1. Não há item atual
-    // 2. Hero não está visível
-    // 3. Foco não está no hero/topbar
-    // 4. Não tem tmdbId
     if (!currentItem || !isHeroVisible || !['hero', 'topbar'].includes(focusZone) || !currentItem.tmdbId) {
       return;
     }
 
-    // Iniciar timer de idle
+    const tmdbId = currentItem.tmdbId;
+
     idleTimerRef.current = setTimeout(() => {
-      fetchTrailer(currentItem.tmdbId, currentItem.mediaType);
+      // 3. Quando o slide muda, a key já está no Map (se prefetch teve sucesso)
+      const cachedKey = trailerKeys[tmdbId];
+      if (cachedKey) {
+        setTrailerKey(cachedKey);
+        fadeTimerRef.current = setTimeout(() => setIsTrailerVisible(true), 100);
+      } else {
+        // Fallback caso prefetch não tenha terminado
+        setTrailerError(true);
+      }
     }, idleDelay);
 
-    return () => {
-      clearTimers();
-    };
-  }, [currentItem, isHeroVisible, focusZone, idleDelay]);
+    return () => clearTimers();
+  }, [currentItem, isHeroVisible, focusZone, idleDelay, trailerKeys]);
 
-  // Efeito para pausar/retomar baseado na visibilidade
+  // Efeito para pausar baseado na visibilidade
   useEffect(() => {
     if (!isHeroVisible || !['hero', 'topbar'].includes(focusZone)) {
       resetTrailer();
     }
   }, [isHeroVisible, focusZone]);
 
+  const getIframeUrl = (key: string) => key
+    ? `https://www.youtube.com/embed/${key}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1&loop=1&playlist=${key}&origin=https://localhost`
+    : '';
+
   return {
+    trailerKeysMap: trailerKeys,
     trailerKey,
     isTrailerLoading,
     isTrailerVisible,
@@ -120,12 +137,12 @@ export function useHeroTrailer(
     hasTrailer: !!trailerKey,
     resetTrailer,
     
-    // URL do iframe do YouTube
-    trailerIframeUrl: trailerKey 
-      ? `https://www.youtube.com/embed/${trailerKey}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1&loop=1&playlist=${trailerKey}`
-      : '',
+    // URL pro active (código legado caso use)
+    trailerIframeUrl: getIframeUrl(trailerKey),
     
-    // Estilos para fade
+    // Função helper para múltiplos iframes
+    getIframeUrl,
+    
     trailerStyle: {
       opacity: isTrailerVisible ? 1 : 0,
       transition: `opacity ${fadeDuration}ms ease-in-out`,

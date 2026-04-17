@@ -10,6 +10,7 @@ export interface HeroSlide {
   backgroundImage: string;
   videoUrl?: string;
   type: 'movie' | 'series' | 'live';
+  tmdbId?: number; // Para conectar com TMDB/Youtube
 }
 
 interface HeroBannerProps {
@@ -19,6 +20,10 @@ interface HeroBannerProps {
   onAddToList?: (slide: HeroSlide) => void;
   /** Quando true aplica glow border pink no viewport */
   focused?: boolean;
+  /** Mapa de ID -> Key do Youtube fornecido pelo prefetch no HomeScreen */
+  trailerKeysMap?: Record<number, string>;
+  /** Duração em ms para fadeIn do trailer (padrão 300ms Netflix-style) */
+  trailerFadeDuration?: number;
 }
 
 export function HeroBanner({
@@ -27,6 +32,8 @@ export function HeroBanner({
   onSelect,
   onAddToList,
   focused = false,
+  trailerKeysMap = {},   // Add from netflix-style prompt
+  trailerFadeDuration = 300,
 }: HeroBannerProps) {
   const hasMultiple = slides.length > 1;
   const extendedSlides = useMemo(() => {
@@ -41,6 +48,7 @@ export function HeroBanner({
   const [internalIndex, setInternalIndex] = useState(hasMultiple ? 1 : 0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(autoPlayInterval > 0);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [trailerTimerActive, setTrailerTimerActive] = useState(false);
 
   const currentIndex = hasMultiple 
     ? (internalIndex === 0 ? slides.length - 1 : internalIndex === extendedSlides.length - 1 ? 0 : internalIndex - 1)
@@ -49,7 +57,23 @@ export function HeroBanner({
   const trackRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const autoPlayTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  const trailerDelayRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastKeyPressRef = useRef<number>(0);
+
+  // Restart Trailer Idle em 500ms
+  useEffect(() => {
+    setTrailerTimerActive(false);
+    if (trailerDelayRef.current) clearTimeout(trailerDelayRef.current);
+    
+    // So mostra o trailer se ele estiver focado no DOM ou em espera
+    if (focused && !isTransitioning) {
+      trailerDelayRef.current = setTimeout(() => {
+        setTrailerTimerActive(true);
+      }, 500); // 500ms idle => Netflix
+    }
+    
+    return () => clearTimeout(trailerDelayRef.current);
+  }, [internalIndex, focused, isTransitioning]);
 
   // Parallax no background
   const updateParallax = useCallback(() => {
@@ -151,7 +175,6 @@ export function HeroBanner({
       // se ainda estiver animando do snap
       if (isTransitioning) return;
       
-      const isFocused = document.activeElement !== document.body && !document.querySelector('.hero-empty');
       // A TV envia keys sempre para window. O controle de focus global fica no HomeScreen.
       // O HeroBanner só reage se ele tiver focused == true passado via props
       if (!focused) return;
@@ -204,22 +227,43 @@ export function HeroBanner({
             ? index === internalIndex
             : index === currentIndex;
 
+          const ytKey = slide.tmdbId ? trailerKeysMap[slide.tmdbId] : null;
+          const showTrailer = isActive && trailerTimerActive && !!ytKey && focused;
+
           return (
             <div
               key={`${slide._key}-${index}`}
               className={`hero-slide ${isActive ? 'active' : ''}`}
               data-index={index}
             >
+              {ytKey && (
+                <iframe
+                  src={`https://www.youtube.com/embed/${ytKey}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1&loop=1&playlist=${ytKey}&origin=https://localhost`}
+                  style={{
+                    position: 'absolute',
+                    top: '-50%', left: 0, width: '100%', height: '200%',
+                    border: 'none',
+                    pointerEvents: 'none',
+                    opacity: showTrailer ? 1 : 0,
+                    transition: `opacity ${trailerFadeDuration}ms ease-in-out`,
+                    zIndex: 0
+                  }}
+                  allow="autoplay; encrypted-media"
+                />
+              )}
               <div
                 className="hero-bg"
                 style={{
                   backgroundImage: `url(${slide.backgroundImage})`,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
+                  opacity: showTrailer ? 0 : 1,
+                  transition: `opacity ${trailerFadeDuration}ms ease-in-out`,
+                  zIndex: 1
                 }}
               />
-              <div className="hero-overlay" />
-              <div className="hero-content">
+              <div className="hero-overlay" style={{ zIndex: 2 }} />
+              <div className="hero-content" style={{ zIndex: 3 }}>
                 {slide.badge && <span className="hero-badge">{slide.badge}</span>}
                 <h1 className="hero-title">{slide.title}</h1>
                 {slide.subtitle && <h2 className="hero-subtitle">{slide.subtitle}</h2>}
