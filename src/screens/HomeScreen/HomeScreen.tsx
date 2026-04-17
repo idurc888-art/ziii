@@ -501,22 +501,24 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   })}
                 </div>
               ) : (() => {
-                const CARD_W = 317
-                const CARD_H = 475
-                const GAP    = 16
-                const STEP   = CARD_W + GAP
+                // ─── Layout Netflix: card focado wide 840px, demais portrait 317px ───
+                // ZERO anima\u00e7\u00e3o nas imagens ou no card. S\u00f3 o pan (translate3d) \u00e9 suave.
+                const CARD_W   = 317   // largura portrait dos cards n\u00e3o focados
+                const CARD_H   = 475   // altura fixa para TODOS (foco n\u00e3o muda altura)
+                const WIDE_W   = 840   // largura do card focado (backdrop wide)
+                const GAP      = 16
 
-                const isRowFocused  = focusZone === 'content' && contentRow === rowIdx
-                const focusedIndex  = contentCols[rowIdx] || 0
-                const isVirtualRow  = Math.abs(contentRow - rowIdx) <= 2
+                const isRowFocused = focusZone === 'content' && contentRow === rowIdx
+                const focusedIndex = contentCols[rowIdx] || 0
+                const isVirtualRow = Math.abs(contentRow - rowIdx) <= 2
 
-                if (!isVirtualRow) return <div style={{ height: 515 }} />
-
-                const cameraShift = -(focusedIndex * STEP)
+                if (!isVirtualRow) return <div style={{ height: CARD_H + 40 }} />
+                const cameraShift = -(focusedIndex * (CARD_W + GAP))
 
                 return (
                   <div style={{
-                    position: 'relative', width: '100%', height: 515,
+                    position: 'relative', width: '100%',
+                    height: CARD_H + 40,
                     paddingTop: 12, overflow: 'hidden',
                   }}>
                     <div style={{
@@ -529,102 +531,85 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                     }}>
                       {row.channels.map((ch, ci) => {
                         const diffCols = ci - focusedIndex
-                        if (diffCols < -4 || diffCols > 8) {
+                        if (diffCols < -3 || diffCols > 6) {
                           return <div key={ci} style={{ width: CARD_W, height: CARD_H, flexShrink: 0 }} />
                         }
-                        const isFocused = isRowFocused && ci === focusedIndex
+                        const isFocused  = isRowFocused && ci === focusedIndex
+                        // Card focado mostra backdrop wide (840px), demais portrait (317px)
+                        const cardW      = isFocused ? WIDE_W : CARD_W
+
+                        const t          = row.tmdb?.get(ch.name) || ch.tmdb
+                        const posterSrc  = t?.poster  ? `https://image.tmdb.org/t/p/w342${t.poster}`   : (ch.logo || '')
+                        const backdropSrc = t?.backdrop ? `https://image.tmdb.org/t/p/w780${t.backdrop}` : posterSrc
+                        const quality    = ch.activeStream?.quality
+                        const badgeColor = quality && quality !== 'UNKNOWN' ? QUALITY_BADGE_COLOR[quality] : null
+                        const textColor  = quality === 'HD' ? '#fff' : '#000'
+
                         return (
                           <div key={ci} onClick={() => onPlay(ch)} style={{
                             position: 'relative',
-                            width: CARD_W, height: CARD_H, flexShrink: 0,
+                            // Largura muda instante\u00e2nea \u2014 SEM transition
+                            width: cardW, height: CARD_H, flexShrink: 0,
                             zIndex: isFocused ? 10 : 1,
                             borderRadius: 8, cursor: 'pointer', overflow: 'hidden',
                             boxShadow: isFocused ? FOCUS_GLOW : 'none',
                             border: isFocused ? FOCUS_BORDER : '1px solid rgba(255,255,255,0.08)',
+                            background: '#111',
                           }}>
-                            <div style={{
+                            {/* Backdrop wide \u2014 sempre presente (carregado, est\u00e1tico) */}
+                            <img src={backdropSrc} style={{
                               position: 'absolute', left: 0, top: 0,
-                              width: '100%', height: '100%',
-                              background: '#111',
-                              border: isFocused ? FOCUS_BORDER : `1px solid rgba(255,255,255,0.08)`,
-                              transition: `border-color ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
-                              borderRadius: 8, zIndex: 3, overflow: 'hidden',
-                            }}>
-                              {(() => {
-                                const t   = row.tmdb?.get(ch.name) || ch.tmdb
-                                const posterSrc = t?.poster || ch.logo || ch.activeStream?.url || ''
-                                const backdropSrc = t?.backdrop ? `https://image.tmdb.org/t/p/w780${t.backdrop}` : posterSrc
-                                const quality = ch.activeStream?.quality
-                                const badgeColor = quality && quality !== 'UNKNOWN' ? QUALITY_BADGE_COLOR[quality] : null
-                                const textColor = quality === 'HD' ? '#fff' : '#000'
-                                return (
-                                  <>
-                                    {/* Backdrop — estático, sem animação */}
-                                    <img src={backdropSrc} style={{
-                                      position: 'absolute', left: 0, top: 0,
-                                      width: 840, height: 475, objectFit: 'cover', zIndex: 1
-                                    }} />
-                                    {/* Poster — estático, passa por trás do card maior */}
-                                    <img src={posterSrc} style={{
-                                      position: 'absolute', left: 0, top: 0,
-                                      width: 317, height: 475, objectFit: 'cover', zIndex: 2,
-                                      opacity: isFocused ? 0 : 1,
-                                    }} />
-                                    {/* Badge de Qualidade */}
-                                    {badgeColor && (
-                                      <div style={{
-                                        position: 'absolute', top: 8, right: 8,
-                                        background: badgeColor,
-                                        color: textColor,
-                                        fontSize: 11, fontWeight: 800,
-                                        padding: '2px 7px', borderRadius: 4,
-                                        letterSpacing: 0.8, zIndex: 6,
-                                        boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
-                                      }}>
-                                        {quality}
-                                      </div>
-                                    )}
-                                    {/* Indicador de múltiplas qualidades */}
-                                    {ch.variantCount > 1 && (
-                                      <div style={{
-                                        position: 'absolute', bottom: 8, right: 8,
-                                        background: 'rgba(0,0,0,0.65)',
-                                        color: '#ccc',
-                                        fontSize: 10, fontWeight: 600,
-                                        padding: '2px 6px', borderRadius: 4,
-                                        zIndex: 6, letterSpacing: 0.4,
-                                      }}>
-                                        {ch.variantCount} opções
-                                      </div>
-                                    )}
-                                  </>
-                                )
-                              })()}
-                            </div>
-                            <div style={{
-                              position: 'absolute', bottom: 0, left: 0, right: 0, height: '55%',
-                              background: 'linear-gradient(transparent, rgba(0,0,0,0.95))',
-                              zIndex: 4, pointerEvents: 'none',
+                              width: WIDE_W, height: CARD_H, objectFit: 'cover',
+                              zIndex: 1, display: 'block',
                             }} />
+                            {/* Poster portrait \u2014 some INSTANTANEAMENTE quando focado (sem transition) */}
+                            <img src={posterSrc} style={{
+                              position: 'absolute', left: 0, top: 0,
+                              width: CARD_W, height: CARD_H, objectFit: 'cover',
+                              zIndex: 2, display: 'block',
+                              visibility: isFocused ? 'hidden' : 'visible',
+                            }} />
+                            {/* Gradiente inferior */}
                             <div style={{
-                              position: 'absolute', bottom: 0, left: 0, right: 0,
-                              padding: isFocused ? '0 24px 24px' : '0 12px 14px',
-                              zIndex: 5, pointerEvents: 'none',
-                              transition: `padding ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
+                              position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%',
+                              background: 'linear-gradient(transparent, rgba(0,0,0,0.92))',
+                              zIndex: 3,
+                            }} />
+                            {/* T\u00edtulo */}
+                            <div style={{
+                              position: 'absolute', bottom: 14, left: 14, right: 14,
+                              zIndex: 4,
                             }}>
                               <div style={{
-                                fontSize: isFocused ? 24 : 18,
-                                fontWeight: 800,
-                                fontFamily: "'Barlow Condensed', sans-serif",
+                                fontSize: 17, fontWeight: 800,
+                                fontFamily: "'Barlow Condensed', 'Outfit', sans-serif",
                                 textTransform: 'uppercase',
                                 overflow: 'hidden', textOverflow: 'ellipsis',
-                                whiteSpace: isFocused ? 'normal' : 'nowrap',
-                                lineHeight: 1.2,
-                                maxHeight: isFocused ? '3.6rem' : '1.5rem',
-                                textShadow: '0 2px 10px rgba(0,0,0,0.95)',
-                                transition: `font-size ${FOCUS_DURATION}ms ${FOCUS_EASING}, max-height ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
+                                whiteSpace: 'nowrap',
+                                textShadow: '0 2px 10px rgba(0,0,0,0.99)',
+                                color: '#fff',
                               }}>{ch.name}</div>
                             </div>
+                            {/* Badge de Qualidade */}
+                            {badgeColor && (
+                              <div style={{
+                                position: 'absolute', top: 8, right: 8,
+                                background: badgeColor, color: textColor,
+                                fontSize: 11, fontWeight: 800,
+                                padding: '2px 7px', borderRadius: 4,
+                                letterSpacing: 0.8, zIndex: 6,
+                                boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
+                              }}>{quality}</div>
+                            )}
+                            {/* Indicador de m\u00faltiplas qualidades */}
+                            {ch.variantCount > 1 && (
+                              <div style={{
+                                position: 'absolute', bottom: 40, right: 8,
+                                background: 'rgba(0,0,0,0.65)', color: '#aaa',
+                                fontSize: 10, fontWeight: 600,
+                                padding: '2px 6px', borderRadius: 4, zIndex: 6,
+                              }}>{ch.variantCount} op\u00e7\u00f5es</div>
+                            )}
                           </div>
                         )
                       })}
