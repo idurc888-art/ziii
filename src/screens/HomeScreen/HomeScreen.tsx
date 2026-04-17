@@ -386,72 +386,93 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       background: BG, color: '#fff',
       fontFamily: "'Outfit', sans-serif",
       overflow: 'hidden',
-      display: 'flex', flexDirection: 'row', // Mudado para ROW base
     }}>
 
-      {/* ── SIDEBAR (Minimalista Enterprise) ───────────────────────────── */}
+      {/* ── SIDEBAR (Minimalista Enterprise) — Sobreposição Absoluta ─── */}
       <div style={{
-        position: 'relative',
-        width: focusZone === 'sidebar' ? 320 : 80,
-        height: '100%',
-        background: 'rgba(0,0,0,0.95)',
-        borderRight: '1px solid rgba(255,255,255,0.05)',
-        zIndex: 100,
+        position: 'absolute',
+        top: focusZone === 'sidebar' ? 0 : 32,
+        left: focusZone === 'sidebar' ? 0 : 32,
+        bottom: focusZone === 'sidebar' ? 0 : 'auto',
+        width: focusZone === 'sidebar' ? 320 : 54,
+        height: focusZone === 'sidebar' ? '100%' : 54,
+        borderRadius: focusZone === 'sidebar' ? 0 : 27,
+        background: focusZone === 'sidebar' ? 'rgba(10,10,10,0.95)' : 'rgba(255,255,255,0.08)',
+        backdropFilter: 'blur(20px)',
+        borderRight: focusZone === 'sidebar' ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(255,255,255,0.15)',
+        boxShadow: focusZone === 'sidebar' ? '0 0 60px rgba(255,0,110,0.45)' : '0 4px 12px rgba(0,0,0,0.5)',
+        zIndex: 999,
         display: 'flex', flexDirection: 'column',
         alignItems: focusZone === 'sidebar' ? 'flex-start' : 'center',
-        paddingTop: 72,
+        justifyContent: focusZone === 'sidebar' ? 'flex-start' : 'center',
+        paddingTop: focusZone === 'sidebar' ? 120 : 0,
         transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
-        flexShrink: 0,
+        overflow: 'hidden',
       }}>
-        {SIDEBAR_ICONS.map((item, i) => {
-          const isActive = focusZone === 'sidebar' && sidebarIdx === i
-          return (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center',
-              width: focusZone === 'sidebar' ? 'calc(100% - 40px)' : 48,
-              height: 48,
-              margin: focusZone === 'sidebar' ? '0 20px 16px 20px' : '0 0 24px 0',
-              padding: focusZone === 'sidebar' ? '0 20px' : '0',
-              justifyContent: focusZone === 'sidebar' ? 'flex-start' : 'center',
-              borderRadius: 24,
-              color: isActive ? '#fff' : 'rgba(255,255,255,0.4)',
-              background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
-              boxShadow: isActive ? `0 0 0 2px ${ACCENT}, 0 0 16px ${GLOW}` : 'none',
-              cursor: 'pointer',
-              transition: 'all 300ms ease',
-            }}>
-              <div style={{
-                width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-                transform: isActive ? 'scale(1.1)' : 'scale(1)',
-                transition: 'transform 300ms ease'
+        {/* Quando fechado mostra o "z" */}
+        <div style={{
+          position: 'absolute',
+          top: 0, left: 0, width: '100%', height: '100%',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 24, fontWeight: 900, color: '#fff', fontStyle: 'italic',
+          opacity: focusZone === 'sidebar' ? 0 : 1,
+          pointerEvents: 'none',
+          transition: 'opacity 300ms ease',
+        }}>
+          z
+        </div>
+
+        {/* Itens do Menu Lateral (escondidos quando fechado) */}
+        <div style={{
+          opacity: focusZone === 'sidebar' ? 1 : 0,
+          pointerEvents: focusZone === 'sidebar' ? 'auto' : 'none',
+          transition: 'opacity 300ms ease',
+          width: '100%',
+          display: 'flex', flexDirection: 'column',
+        }}>
+          {SIDEBAR_ICONS.map((item, i) => {
+            const isActive = focusZone === 'sidebar' && sidebarIdx === i
+            return (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center',
+                width: 'calc(100% - 40px)',
+                height: 48,
+                margin: '0 20px 16px 20px',
+                padding: '0 20px',
+                justifyContent: 'flex-start',
+                borderRadius: 24,
+                color: isActive ? '#fff' : 'rgba(255,255,255,0.4)',
+                background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
+                boxShadow: isActive ? `0 0 0 2px ${ACCENT}, 0 0 16px ${GLOW}` : 'none',
+                transition: 'all 300ms cubic-bezier(0.25,1,0.5,1)',
               }}>
-                {item.svg}
+                <div style={{
+                  width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                  transform: isActive ? 'scale(1.15)' : 'scale(1)',
+                  transition: 'transform 300ms ease'
+                }}>
+                  {item.svg}
+                </div>
+                
+                <div style={{
+                  marginLeft: 16,
+                  fontSize: 18,
+                  fontWeight: 600,
+                  textTransform: 'lowercase',
+                }}>
+                  {item.label}
+                </div>
               </div>
-              
-              <div style={{
-                marginLeft: 16,
-                fontSize: 18,
-                fontWeight: 600,
-                textTransform: 'lowercase',
-                opacity: focusZone === 'sidebar' ? 1 : 0,
-                width: focusZone === 'sidebar' ? 'auto' : 0,
-                overflow: 'hidden',
-                whiteSpace: 'nowrap',
-                transition: 'opacity 300ms ease, width 300ms ease',
-              }}>
-                {item.label}
-              </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
 
       {/* ── CORPO PRINCIPAL ──────────────────────────────────────────────── */}
       <div style={{
-        flex: 1,
+        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
         display: 'flex', flexDirection: 'column',
-        position: 'relative',
         overflow: 'hidden',
       }}>
 
