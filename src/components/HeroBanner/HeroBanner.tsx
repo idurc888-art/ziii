@@ -26,7 +26,7 @@ export function HeroBanner({
   onAddToList 
 }: HeroBannerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(autoPlayInterval > 0);
   
   const trackRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -71,8 +71,8 @@ export function HeroBanner({
       trackRef.current.style.transform = `translateX(${position}px)`;
     }
     
-    // Reset auto-play
-    if (isAutoPlaying) {
+    // Reset auto-play (só quando autoPlayInterval > 0)
+    if (isAutoPlaying && autoPlayInterval > 0) {
       clearTimeout(autoPlayTimerRef.current);
       if (progressRef.current) {
         progressRef.current.style.transition = 'none';

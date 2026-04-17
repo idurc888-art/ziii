@@ -69,7 +69,7 @@ const CATEGORY_ICONS: Record<string, { emoji: string; color: string }> = {
 const FOCUS_SCALE = 1.05;
 const FOCUS_DURATION = 350;
 const FOCUS_EASING = 'cubic-bezier(0.25, 1, 0.5, 1)';
-const UNFOCUS_OPACITY = 0.6;
+const UNFOCUS_OPACITY = 1;
 const FOCUS_GLOW = '0 0 24px rgba(255,0,110,0.6), 0 0 60px rgba(255,0,110,0.25)';
 const FOCUS_BORDER = `4px solid #ff006e`;
 
@@ -200,13 +200,20 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
 
   // ─── Scroll Container Vertical ─────────────────────────────────────────
   const rowRefs = useRef<(HTMLDivElement | null)[]>([])
+  const viewportRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
-    if (focusZone !== 'content') return
+    if (focusZone !== 'content') {
+      // Quando voltámos para o hero, rola de volta ao topo
+      if (viewportRef.current) {
+        viewportRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+      return
+    }
     const row = rowRefs.current[contentRow]
     if (row) {
-      row.scrollIntoView({ behavior: 'smooth' as ScrollBehavior, block: 'center' })
+      row.scrollIntoView({ behavior: 'smooth' as ScrollBehavior, block: 'nearest' })
     }
-  }, [contentRow, focusZone, contentCols])
+  }, [contentRow, focusZone])
 
   // ─── D-pad Navigation ────────────────────────────────────────────────
   useEffect(() => {
@@ -339,18 +346,14 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       fontFamily: "'Outfit', sans-serif", overflow: 'hidden',
     }}>
 
-      {/* VIEWPORT */}
-      <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+      {/* VIEWPORT - scroll interno */}
+      <div ref={viewportRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'auto', scrollBehavior: 'smooth' }}>
 
-        {/* TOPBAR — flutuante */}
+        {/* TOPBAR — SEMPRE visível como Netflix */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, zIndex: 90,
           height: 72, display: 'flex', alignItems: 'center', padding: '0 80px',
-          background: 'linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)',
-          transition: 'opacity 400ms, transform 400ms',
-          opacity: focusZone === 'content' ? 0 : 1,
-          transform: focusZone === 'content' ? 'translateY(-100%)' : 'translateY(0)',
-          pointerEvents: focusZone === 'content' ? 'none' : 'auto',
+          background: 'linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0.4), transparent)',
           flexShrink: 0,
         }}>
           <div style={{
@@ -379,13 +382,14 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           </div>
         </div>
 
-        {/* HERO BANNER Netflix Style */}
+        {/* HERO BANNER Netflix Style - oculto quando navega nos cards */}
         <div style={{
           position: 'relative',
           width: '100%',
-          height: '80vh',
-          minHeight: '80vh',
+          height: focusZone === 'content' ? '0px' : '80vh',
+          minHeight: focusZone === 'content' ? '0px' : '80vh',
           overflow: 'hidden',
+          transition: 'height 500ms cubic-bezier(0.25, 1, 0.5, 1), min-height 500ms cubic-bezier(0.25, 1, 0.5, 1)',
         }}>
           <HeroBanner
             slides={mockHeroSlides}
@@ -476,8 +480,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   })}
                 </div>
               ) : (() => {
-                const CARD_W = 264;
-                const CARD_H = 396;
+                const CARD_W = 317;
+                const CARD_H = 475;
                 const GAP = 20;
                 const STEP = CARD_W + GAP;
                 
@@ -486,7 +490,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                 const isVirtualRow = Math.abs(contentRow - rowIdx) <= 2
 
                 if (!isVirtualRow) {
-                  return <div style={{ height: 440 }} />
+                  return <div style={{ height: 520 }} />
                 }
 
                 // Cálculo da Câmera (Foco Ancorado na Esquerda)
@@ -523,7 +527,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                     }
 
                     const isFocused = isRowFocused && ci === focusedIndex;
-                    const expandedW = 696;
+                    const expandedW = 840;
                     const currentW = isFocused ? expandedW : CARD_W;
                     
                     return (
@@ -537,10 +541,10 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                         boxShadow: isFocused ? FOCUS_GLOW : 'none',
                         transition: `flex ${FOCUS_DURATION}ms ${FOCUS_EASING}, opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}, box-shadow ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                       }}>
-                        {/* Container fixo para o Poster ancorado à esquerda, impede que o Flex distorça a imagem durante o slide */}
+                        {/* Card expandido = poster inteiro esticado (sem split) */}
                         <div style={{
                           position: 'absolute', left: 0, top: 0,
-                          width: CARD_W, height: '100%',
+                          width: '100%', height: '100%',
                           background: '#111', border: isFocused ? FOCUS_BORDER : `1px solid rgba(255,255,255,0.08)`,
                           transition: `border-color ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                           borderRadius: 8, zIndex: 3, overflow: 'hidden'
@@ -552,47 +556,32 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                           })()}
                         </div>
 
-                        {/* Expansion Area (Backdrop + Fallback Title) */}
+                        {/* Overlay gradiente escuro + Título Grande no card focado */}
                         <div style={{
-                          position: 'absolute', left: CARD_W - 8, top: 0,
-                          width: expandedW - CARD_W + 8, height: '100%',
-                          background: '#111',
-                          border: FOCUS_BORDER, borderLeft: 'none',
-                          borderRadius: '0 8px 8px 0',
-                          opacity: isFocused ? 1 : 0, overflow: 'hidden',
+                          position: 'absolute', bottom: 0, left: 0, right: 0, height: '55%',
+                          background: 'linear-gradient(transparent, rgba(0,0,0,0.95))',
+                          zIndex: 4, pointerEvents: 'none',
                           transition: `opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
-                          zIndex: 2,
-                        }}>
-                           {(() => { 
-                             const bk = row.tmdb?.get(ch.name)?.backdrop; 
-                             if (!bk && !ch.logo) return null;
-                             return <img src={bk || ch.logo} style={{
-                               width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6,
-                             }}/> 
-                           })()}
-                           <div style={{
-                             position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%',
-                             background: 'linear-gradient(transparent, rgba(0,0,0,0.95))'
-                           }}/>
-                           <div style={{
-                             position: 'absolute', bottom: 20, left: 24, right: 24,
-                             fontSize: 28, fontWeight: 900, textTransform: 'uppercase', textShadow: '0 4px 12px rgba(0,0,0,0.9)'
-                           }}>
-                             {ch.name}
-                           </div>
-                        </div>
-
-                        {/* Fallback título no Poster Inativo */}
+                        }} />
                         <div style={{
-                          position: 'absolute', bottom: 0, left: 0, width: CARD_W, height: '40%',
-                          background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
-                          zIndex: 4, opacity: isFocused ? 0 : 1, transition: `opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}`, pointerEvents: 'none'
+                          position: 'absolute', bottom: 0, left: 0, right: 0,
+                          padding: isFocused ? '0 24px 24px' : '0 12px 14px',
+                          zIndex: 5, pointerEvents: 'none',
+                          transition: `padding ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                         }}>
-                           <div style={{
-                             position: 'absolute', bottom: 12, left: 12, right: 12,
-                             fontSize: '0.8rem', fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif",
-                             textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                           }}>{ch.name}</div>
+                          <div style={{
+                            fontSize: isFocused ? '1.5rem' : '0.85rem', 
+                            fontWeight: 800,
+                            fontFamily: "'Barlow Condensed', sans-serif",
+                            textTransform: 'uppercase', 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis',
+                            whiteSpace: isFocused ? 'normal' : 'nowrap',
+                            lineHeight: 1.2,
+                            maxHeight: isFocused ? '3.6rem' : '1.2rem',
+                            textShadow: '0 2px 10px rgba(0,0,0,0.95)',
+                            transition: `font-size ${FOCUS_DURATION}ms ${FOCUS_EASING}, max-height ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
+                          }}>{ch.name}</div>
                         </div>
                       </div>
                     )
@@ -657,7 +646,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                 <div style={{ display: 'flex', gap: 20 }}>
                   {[0, 1, 2, 3, 4, 5].map(c => (
                     <div key={c} style={{
-                      width: 264, height: 396, borderRadius: 8, flexShrink: 0,
+                      width: 317, height: 475, borderRadius: 8, flexShrink: 0,
                       background: 'linear-gradient(110deg, rgba(255,255,255,0.04) 30%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 70%)',
                       backgroundSize: '300% 100%',
                       animation: `shimmer 1.8s ease-in-out infinite`,
