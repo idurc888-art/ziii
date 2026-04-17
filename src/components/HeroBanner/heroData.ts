@@ -3,53 +3,52 @@ import type { HeroSlide } from './HeroBanner';
 export const mockHeroSlides: HeroSlide[] = [
   {
     id: '1',
-    title: 'Mulheres Imperfeitas',
-    subtitle: 'Série Original',
-    description: 'Os segredos de três melhores amigas vêm à tona neste escandaloso mistério de assassinato.',
-    badge: 'Novo · Série',
-    backgroundImage: 'https://picsum.photos/1920/1080?random=11',
-    type: 'series'
+    title: 'Dune: Part Two',
+    subtitle: 'Filme',
+    description: 'Paul Atreides se une a Chani e aos Fremen enquanto busca vingança contra os conspiradores que destruíram sua família.',
+    badge: 'Novo · Filme',
+    backgroundImage: 'https://image.tmdb.org/t/p/w1280/eZ239CUp1d6OryZEBPnO2n87gMG.jpg',
+    type: 'movie'
   },
   {
     id: '2',
-    title: 'Consequência',
-    subtitle: 'Filme Original',
-    description: 'Keanu Reeves estrela como um ícone de Hollywood chantageado por um vídeo misterioso.',
-    badge: 'Novo · Filme',
-    backgroundImage: 'https://picsum.photos/1920/1080?random=22',
+    title: 'Oppenheimer',
+    subtitle: 'Filme',
+    description: 'A história do cientista americano J. Robert Oppenheimer e seu papel no desenvolvimento da bomba atômica.',
+    badge: 'Sucesso',
+    backgroundImage: 'https://image.tmdb.org/t/p/w1280/neeNHeXjMF5fXoCJRsOmkNGC7q.jpg',
     type: 'movie'
   },
   {
     id: '3',
-    title: 'For All Mankind',
-    subtitle: 'Temporada 4',
-    description: 'A luta para dominar o espaço continua. Escolha um lado: Terra vs. Marte.',
-    badge: 'Episódios às sextas',
-    backgroundImage: 'https://picsum.photos/1920/1080?random=33',
+    title: 'The Bear',
+    subtitle: 'Temporada 3',
+    description: 'Carmy se esforça para transformar a lanchonete da família e a si mesmo enquanto trabalha ao lado de uma equipe rústica.',
+    badge: 'Série Original',
+    backgroundImage: 'https://image.tmdb.org/t/p/w1280/wHNwlE6ftEpgjVbdhLXOtv1hLs0.jpg',
     type: 'series'
   },
   {
     id: '4',
-    title: 'Ruptura',
-    subtitle: 'Série Original',
-    description: 'Sua vida no trabalho e sua vida pessoal estão completamente separadas. Literalmente.',
-    badge: 'Sucesso · Série',
-    backgroundImage: 'https://picsum.photos/1920/1080?random=44',
+    title: 'Stranger Things',
+    subtitle: 'Temporada 5',
+    description: 'Quando um garoto desaparece, a cidade inteira se envolve em um mistério com experimentos secretos e forças sobrenaturais.',
+    badge: 'Em Breve',
+    backgroundImage: 'https://image.tmdb.org/t/p/w1280/56v2KjBlU4XaOv9rVYEQypROD7P.jpg',
     type: 'series'
   },
   {
     id: '5',
-    title: 'Canais ao Vivo',
-    subtitle: '24/7',
-    description: 'Assista seus canais favoritos ao vivo com qualidade premium.',
-    badge: 'Ao Vivo',
-    backgroundImage: 'https://picsum.photos/1920/1080?random=55',
-    type: 'live'
+    title: 'Planeta Terra III',
+    subtitle: 'Documentário',
+    description: 'Viaje para os lugares mais distantes e descubra histórias incríveis da natureza pelo mundo afora.',
+    badge: 'Novo',
+    backgroundImage: 'https://image.tmdb.org/t/p/w1280/3TOUvY2NZx8r31UHA3CQdRAY271.jpg',
+    type: 'series'
   }
 ];
 
 export const getHeroSlidesFromChannels = (channels: any[]): HeroSlide[] => {
-  // Esta função pode ser usada para converter canais em slides do hero
   return channels.slice(0, 5).map((channel, index) => ({
     id: `channel-${channel.id || index}`,
     title: channel.name,

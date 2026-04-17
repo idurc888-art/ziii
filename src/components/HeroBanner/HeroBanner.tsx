@@ -64,7 +64,7 @@ export function HeroBanner({
 
       // Timing diferenciado: track mais rápido, conteúdo entra depois (via CSS delay)
       trackRef.current.style.transition = animated
-        ? 'transform 0.72s cubic-bezier(0.16, 1, 0.3, 1)'
+        ? 'transform 1.1s cubic-bezier(0.16, 1, 0.3, 1)'
         : 'none';
       trackRef.current.style.transform = `translateX(${position}px)`;
     }

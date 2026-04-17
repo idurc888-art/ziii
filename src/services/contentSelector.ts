@@ -206,17 +206,19 @@ export async function buildFilmesContent(groups: NormalizedGroups): Promise<Scre
     { type: 'portrait' as RowType, title: 'drama & ', titleAccent: 'suspense', channels: filmes.slice(46, 58), tmdb: new Map() },
   ].filter(r => r.channels.length > 0)
 
-  // Enriquecer hero + top10
-  const toEnrich = [...heroChannels, ...filmes.slice(0, 10)]
-    .map(ch => ch.name)
-    .filter((v, i, a) => a.indexOf(v) === i)
+  // Enriquecer hero + TODAS as rows
+  const toEnrich = [
+    ...heroChannels,
+    ...rows.flatMap(r => r.channels)
+  ].map(ch => ch.name).filter((v, i, a) => a.indexOf(v) === i)
 
-  const tmdbResults = await enrichBatch(toEnrich, 10, 300)
+  const tmdbResults = await enrichBatch(toEnrich, 30, 300)
 
   const heroTmdb = new Map<string, TMDBResult | null>()
   for (const ch of heroChannels) heroTmdb.set(ch.name, tmdbResults.get(ch.name) || null)
-  if (rows[0]) {
-    for (const ch of rows[0].channels) rows[0].tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
+
+  for (const row of rows) {
+    for (const ch of row.channels) row.tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
   }
 
   return { heroChannels, heroTmdb, rows }
@@ -256,14 +258,19 @@ export async function buildSeriesContent(groups: NormalizedGroups): Promise<Scre
     }
   }
 
-  const toEnrich = [...heroChannels, ...series.slice(0, 10)]
-    .map(ch => ch.name).filter((v, i, a) => a.indexOf(v) === i)
-  const tmdbResults = await enrichBatch(toEnrich, 10, 300)
+  // Enriquecer hero + TODAS as rows
+  const toEnrich = [
+    ...heroChannels,
+    ...rows.flatMap(r => r.channels)
+  ].map(ch => ch.name).filter((v, i, a) => a.indexOf(v) === i)
+
+  const tmdbResults = await enrichBatch(toEnrich, 30, 300)
 
   const heroTmdb = new Map<string, TMDBResult | null>()
   for (const ch of heroChannels) heroTmdb.set(ch.name, tmdbResults.get(ch.name) || null)
-  if (rows[0]) {
-    for (const ch of rows[0].channels) rows[0].tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
+
+  for (const row of rows) {
+    for (const ch of row.channels) row.tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
   }
 
   return { heroChannels, heroTmdb, rows }
@@ -283,6 +290,20 @@ export async function buildTvContent(groups: NormalizedGroups): Promise<ScreenCo
     { type: 'simple' as RowType, title: '', titleAccent: 'documentários', channels: pickFromCategory(groups, 'documentarios', 20), tmdb: new Map() },
     { type: 'simple' as RowType, title: '', titleAccent: 'outros', channels: pickFromCategory(groups, 'outros', 20), tmdb: new Map() },
   ].filter(r => r.channels.length > 0)
+
+  // Enriquecer categorias específicas da TV
+  const toEnrich = rows
+    .filter(r => r.titleAccent === 'notícias' || r.titleAccent === 'documentários')
+    .flatMap(r => r.channels)
+    .map(ch => ch.name).filter((v, i, a) => a.indexOf(v) === i)
+
+  const tmdbResults = await enrichBatch(toEnrich, 20, 300)
+
+  for (const row of rows) {
+    if (row.titleAccent === 'notícias' || row.titleAccent === 'documentários') {
+      for (const ch of row.channels) row.tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
+    }
+  }
 
   return { heroChannels, heroTmdb: new Map(), rows }
 }

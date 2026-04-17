@@ -11,7 +11,7 @@ import {
 } from '../../services/contentSelector'
 import { recordPlay } from '../../services/historyService'
 import { useHeroTrailer } from '../../hooks/useHeroTrailer'
-import { HeroBanner, mockHeroSlides } from '../../components/HeroBanner'
+import { HeroBanner, mockHeroSlides, type HeroSlide } from '../../components/HeroBanner'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Channel {
@@ -101,6 +101,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const [activeView,  setActiveView]  = useState<DashboardView>((saved?.activeView as DashboardView) || 'home')
   const [isLoadingContent, setIsLoadingContent] = useState(false)
   const [content, setContent] = useState<ScreenContent | null>(null)
+  const [heroSlides, setHeroSlides] = useState<HeroSlide[]>(mockHeroSlides)
 
   // ─── Load content ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -119,6 +120,35 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         setIsLoadingContent(false)
         setContentRow(0)
         setContentCols(new Array(data.rows.length).fill(0))
+
+        if (activeView === 'home') {
+          setHeroSlides(mockHeroSlides)
+        } else if (activeView === 'live') {
+          setHeroSlides(data.heroChannels.map((ch, idx) => ({
+            id: `slide-${idx}`,
+            title: ch.name,
+            subtitle: ch.group,
+            description: `Assista ${ch.name} ao vivo na ziiiTV.`,
+            badge: 'Ao Vivo',
+            backgroundImage: ch.logo || `https://picsum.photos/1920/1080?random=${idx + 100}`,
+            type: 'live'
+          })))
+        } else {
+          setHeroSlides(data.heroChannels.map((ch, idx) => {
+            const tmdb = data.heroTmdb.get(ch.name)
+            return {
+              id: `slide-${idx}`,
+              title: tmdb?.title || ch.name,
+              subtitle: activeView === 'movies' ? 'Filme' : 'Série',
+              description: tmdb?.overview || `Assista ${ch.name} com a melhor qualidade.`,
+              badge: 'Destaque',
+              backgroundImage: tmdb?.backdrop
+                ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop}`
+                : `https://picsum.photos/1920/1080?random=${idx + 200}`,
+              type: activeView === 'movies' ? 'movie' : 'series'
+            }
+          }))
+        }
       }
     }
     load()
@@ -392,33 +422,24 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       </div>
 
       {/* ── CONTEÚDO SCROLLÁVEL (banner + rows num único flex-column) ─── */}
-      {/*
-          FIX SCROLL JUMP:
-          O banner tem height que transiciona de 87vh → 0px.
-          As rows ficam num wrapper com overflow:auto separado.
-          Assim quando o banner colapsa, as rows não "saltam" —
-          elas simplesmente ficam visíveis desde o topo.
-      */}
       <div style={{
         flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
         position: 'relative',
+        overflow: 'hidden',
       }}>
 
-        {/* BANNER — colapsa suavemente sem afetar o scroll das rows */}
+        {/* BANNER — absolutamente posicionado, some sem empurrar rows */}
         <div style={{
-          flexShrink: 0,
-          width: '100%',
-          height: isHeroVisible ? HERO_H : HERO_H_COLLAPSED,
-          minHeight: isHeroVisible ? HERO_H : HERO_H_COLLAPSED,
+          position: 'absolute',
+          top: 0, left: 0, right: 0,
+          height: isHeroVisible ? HERO_H : '0px',
           overflow: 'hidden',
-          transition: 'height 520ms cubic-bezier(0.25,1,0.5,1), min-height 520ms cubic-bezier(0.25,1,0.5,1)',
+          transition: 'height 520ms cubic-bezier(0.25,1,0.5,1)',
+          zIndex: 10,
         }}>
           <HeroBanner
-            slides={mockHeroSlides}
-            autoPlayInterval={0}
+            slides={heroSlides}
+            autoPlayInterval={9000}
             focused={focusZone === 'hero'}
             onSelect={(slide) => {
               if (slide.type === 'live') {
@@ -436,12 +457,12 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         <div
           ref={rowsWrapRef}
           style={{
-            flex: 1,
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
-            // Quando banner visível, rows ficam logo abaixo sem padding extra
-            paddingTop: isHeroVisible ? 0 : 16,
-            transition: 'padding-top 400ms ease',
+            paddingTop: isHeroVisible ? HERO_H : '8px',
+            transition: 'padding-top 520ms cubic-bezier(0.25,1,0.5,1)',
             scrollBehavior: 'smooth',
           }}
         >
