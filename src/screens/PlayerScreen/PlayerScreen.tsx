@@ -57,6 +57,10 @@ const INITIAL: State = {
   debugKeys: [],
 }
 
+// ─── Retry Config ────────────────────────────────────────────────────────────
+const RETRY_DELAYS = [1000, 3000, 5000, 8000, 12000] // Exponential backoff
+const MAX_RETRIES = RETRY_DELAYS.length
+
 interface Props {
   channel:        Channel
   onBack:         () => void
@@ -80,6 +84,9 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
   const stateRef    = useRef(state)
   stateRef.current  = state
 
+  const retryCountRef = useRef(0)
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const backend  = selectPlayerBackend(channel.url)
   const isAVPlay = backend === 'avplay'
 
@@ -96,28 +103,68 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
   }, [])
 
   useEffect(() => {
-    if (state.status === 'playing') { dispatch({ type: 'SET_FOCUS', zone: 'none' }); showOsd() }
+    if (state.status === 'playing') { retryCountRef.current = 0; dispatch({ type: 'SET_FOCUS', zone: 'none' }); showOsd() }
     return () => { if (osdTimerRef.current) clearTimeout(osdTimerRef.current) }
   }, [state.status])
+
+  // ─── Retry handler ─────────────────────────────────────────────────────
+  const attemptRetry = useCallback((errorMsg: string) => {
+    const attempt = retryCountRef.current
+    if (attempt >= MAX_RETRIES) {
+      // Esgotou as tentativas — mostra erro final
+      dispatch({ type: 'SET_STATUS', status: 'error', error: errorMsg })
+      return
+    }
+    const delay = RETRY_DELAYS[attempt]
+    retryCountRef.current = attempt + 1
+    console.log(`[PlayerRetry] Attempt ${attempt + 1}/${MAX_RETRIES} in ${delay}ms`)
+    dispatch({ type: 'SET_STATUS', status: 'loading' })
+
+    retryTimerRef.current = setTimeout(() => {
+      if (backend === 'avplay') {
+        if (!isAVPlayAvailable()) {
+          setTimeout(() => dispatch({ type: 'SET_STATUS', status: 'playing' }), 300)
+          return
+        }
+        try { avplayStop() } catch(_) {}
+        avplayLoad(
+          channel.url,
+          'av-player',
+          () => dispatch({ type: 'SET_STATUS', status: 'playing' }),
+          (msg) => attemptRetry(msg)
+        )
+      } else {
+        const video = videoRef.current
+        if (!video) return
+        destroyPlayer()
+        initPlayer(video)
+          .then(async (player: any) => {
+            onShakaReady?.(player)
+            await loadStream(channel.url)
+            dispatch({ type: 'SET_STATUS', status: 'playing' })
+          })
+          .catch((e: Error) => attemptRetry(e.message))
+      }
+    }, delay)
+  }, [channel.url, backend])
 
   // ─ Player lifecycle
   useEffect(() => {
     dispatch({ type: 'SET_STATUS', status: 'loading' })
+    retryCountRef.current = 0
 
     if (backend === 'avplay') {
       if (!isAVPlayAvailable()) {
-        // PC/emulador — sem AVPlay real, simula sucesso
         setTimeout(() => dispatch({ type: 'SET_STATUS', status: 'playing' }), 300)
         return
       }
-      // ★ Passa o id do <object> para o avplayService saber qual elemento usar
       avplayLoad(
         channel.url,
-        'av-player',                  // ← id do <object> no DOM
+        'av-player',
         () => dispatch({ type: 'SET_STATUS', status: 'playing' }),
-        (msg) => dispatch({ type: 'SET_STATUS', status: 'error', error: msg })
+        (msg) => attemptRetry(msg)
       )
-      return () => avplayStop()
+      return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); avplayStop() }
     }
 
     // Shaka
@@ -129,8 +176,8 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         await loadStream(channel.url)
         dispatch({ type: 'SET_STATUS', status: 'playing' })
       })
-      .catch((e: Error) => dispatch({ type: 'SET_STATUS', status: 'error', error: e.message }))
-    return () => { onShakaReady?.(null); destroyPlayer() }
+      .catch((e: Error) => attemptRetry(e.message))
+    return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); onShakaReady?.(null); destroyPlayer() }
   }, [channel.url, backend])
 
   // ─ Teclado
@@ -412,6 +459,12 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           <div style={{ fontSize: 60 }}>❌</div>
           <div style={{ fontSize: 26, fontWeight: 700, color: '#ff6b6b' }}>{state.error ?? 'Erro ao carregar stream'}</div>
           <div style={{ fontSize: 18, opacity: 0.45, maxWidth: 800, textAlign: 'center' }}>{channel.url}</div>
+          <div style={{ fontSize: 16, opacity: 0.5, marginTop: 8 }}>
+            {retryCountRef.current >= MAX_RETRIES 
+              ? `Todas as ${MAX_RETRIES} tentativas falharam` 
+              : `Tentativa ${retryCountRef.current}/${MAX_RETRIES}`
+            }
+          </div>
           <div style={{ marginTop: 16, background: ACCENT, padding: '14px 48px', borderRadius: 8, fontSize: 20, fontWeight: 700 }}>
             Pressione BACK para voltar
           </div>

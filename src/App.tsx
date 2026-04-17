@@ -11,13 +11,17 @@ const TEST_M3U_URL = 'http://cdc55.cc/get.php?username=0357028521&password=82740
 
 type AppScreen = 'splash' | 'profiles' | 'home'
 
+const SCREEN_KEY = 'ziiiTV_appScreen'
+
 export default function App() {
   const normalizedGroups = useChannelsStore(s => s.normalizedGroups)
   const loadFromUrl      = useChannelsStore(s => s.loadFromUrl)
   const currentChannel   = useChannelsStore(s => s.currentChannel)
   const setCurrentChannel = useChannelsStore(s => s.setCurrentChannel)
 
-  const [appScreen, setAppScreen] = useState<AppScreen>('splash')
+  // Restaura tela salva (se veio de um resume do Tizen, pula splash/profiles)
+  const savedScreen = (() => { try { return localStorage.getItem(SCREEN_KEY) as AppScreen | null } catch(_) { return null } })()
+  const [appScreen, setAppScreen] = useState<AppScreen>(savedScreen === 'home' ? 'home' : 'splash')
 
   // ref para o player Shaka ativo (preenchido pelo PlayerScreen via callback)
   const shakaRef = useRef<any>(null)
@@ -60,6 +64,12 @@ export default function App() {
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
+
+  // ─── Persistir tela ativa para restore ─────────────────────────────────────
+  useEffect(() => {
+    try { localStorage.setItem(SCREEN_KEY, appScreen) } catch(_) {}
+  }, [appScreen])
+
 
   // ─── Roteamento: PlayerScreen ──────────────────────────────────────────────
   if (currentChannel) {

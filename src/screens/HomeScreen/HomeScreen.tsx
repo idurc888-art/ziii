@@ -12,7 +12,7 @@ import {
 import { recordPlay } from '../../services/historyService'
 import { useHeroTrailer } from '../../hooks/useHeroTrailer'
 import { HeroBanner, mockHeroSlides } from '../../components/HeroBanner'
-// import { TopMoviesBanner, mockTopMovies } from '../../components/TopMoviesBanner'
+// // import { TopMoviesBanner, mockTopMovies } from '../../components/TopMoviesBanner' // disabled
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Channel {
@@ -69,23 +69,35 @@ const CATEGORY_ICONS: Record<string, { emoji: string; color: string }> = {
 const FOCUS_SCALE = 1.05;
 const FOCUS_DURATION = 350;
 const FOCUS_EASING = 'cubic-bezier(0.25, 1, 0.5, 1)';
-const UNFOCUS_OPACITY = 0.88;
+const UNFOCUS_OPACITY = 0.6;
+const FOCUS_GLOW = '0 0 24px rgba(255,0,110,0.6), 0 0 60px rgba(255,0,110,0.25)';
+const FOCUS_BORDER = `4px solid #ff006e`;
+
+// ─── State Persistence ──────────────────────────────────────────────────────
+const STATE_KEY = 'ziiiTV_homeState';
+function saveNavState(data: { focusZone: string; contentRow: number; contentCols: number[]; activeView: string }) {
+  try { localStorage.setItem(STATE_KEY, JSON.stringify(data)) } catch(_) {}
+}
+function loadNavState(): { focusZone?: string; contentRow?: number; contentCols?: number[]; activeView?: string } | null {
+  try { const raw = localStorage.getItem(STATE_KEY); return raw ? JSON.parse(raw) : null } catch(_) { return null }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 export default function HomeScreen({ groups, onPlay, onBack }: Props) {
-  // ─── State ──────────────────────────────────────────────────────────────
-  const [focusZone, setFocusZone] = useState<FocusZone>('hero')
-  const [heroState, setHeroState] = useState<HeroState>('default')
+  // ─── State (com restauração) ────────────────────────────────────────────
+  const saved = useRef(loadNavState()).current
+  const [focusZone, setFocusZone] = useState<FocusZone>((saved?.focusZone as FocusZone) || 'hero')
+  const [heroState, setHeroState] = useState<HeroState>(saved?.focusZone === 'content' ? 'collapsed' : 'default')
   const [sidebarIdx, setSidebarIdx] = useState(0)
   const [topbarIdx, setTopbarIdx] = useState(0)
-  const [contentRow, setContentRow] = useState(0)
-  const [contentCols, setContentCols] = useState<number[]>([0, 0, 0, 0, 0, 0, 0, 0])
+  const [contentRow, setContentRow] = useState(saved?.contentRow ?? 0)
+  const [contentCols, setContentCols] = useState<number[]>(saved?.contentCols ?? [0, 0, 0, 0, 0, 0, 0, 0])
   const [showExit, setShowExit] = useState(false)
   const [exitFocus, setExitFocus] = useState(0)
 
-  const [activeView, setActiveView] = useState<DashboardView>('home')
+  const [activeView, setActiveView] = useState<DashboardView>((saved?.activeView as DashboardView) || 'home')
   const [isLoadingContent, setIsLoadingContent] = useState(false)
   const [content, setContent] = useState<ScreenContent | null>(null)
 
@@ -312,7 +324,10 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     return () => document.removeEventListener('keydown', onKey)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-
+  // ─── Persist navigation state ─────────────────────────────────────────
+  useEffect(() => {
+    saveNavState({ focusZone, contentRow, contentCols, activeView })
+  }, [focusZone, contentRow, contentCols, activeView])
 
   // ═══════════════════════════════════════════════════════════════════════
   // RENDER
@@ -519,14 +534,14 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                         zIndex: isFocused ? 10 : 1,
                         opacity: (isRowFocused && !isFocused) ? UNFOCUS_OPACITY : 1,
                         borderRadius: 8, cursor: 'pointer', overflow: 'hidden',
-                        boxShadow: isFocused ? '0 10px 40px rgba(0,0,0,0.8)' : 'none',
+                        boxShadow: isFocused ? FOCUS_GLOW : 'none',
                         transition: `flex ${FOCUS_DURATION}ms ${FOCUS_EASING}, opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}, box-shadow ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                       }}>
                         {/* Container fixo para o Poster ancorado à esquerda, impede que o Flex distorça a imagem durante o slide */}
                         <div style={{
                           position: 'absolute', left: 0, top: 0,
                           width: CARD_W, height: '100%',
-                          background: '#111', border: isFocused ? `3px solid ${ACCENT}` : `1px solid transparent`,
+                          background: '#111', border: isFocused ? FOCUS_BORDER : `1px solid rgba(255,255,255,0.08)`,
                           transition: `border-color ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                           borderRadius: 8, zIndex: 3, overflow: 'hidden'
                         }}>
@@ -542,7 +557,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                           position: 'absolute', left: CARD_W - 8, top: 0,
                           width: expandedW - CARD_W + 8, height: '100%',
                           background: '#111',
-                          border: `3px solid ${ACCENT}`, borderLeft: 'none',
+                          border: FOCUS_BORDER, borderLeft: 'none',
                           borderRadius: '0 8px 8px 0',
                           opacity: isFocused ? 1 : 0, overflow: 'hidden',
                           transition: `opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
@@ -621,20 +636,37 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           ))}
         </div>
 
-        {/* LOADING */}
+        {/* SKELETON SHIMMER LOADING */}
         {isLoadingContent && (
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.85)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            zIndex: 80,
+            background: 'rgba(0,0,0,0.92)',
+            zIndex: 80, padding: '120px 80px 0',
           }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 60, marginBottom: 20, animation: 'spin 2s linear infinite' }}>🛸</div>
-              <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase' }}>
-                Abduzindo conteúdo...
+            {/* Skeleton rows */}
+            {[0, 1, 2].map(r => (
+              <div key={r} style={{ marginBottom: 48 }}>
+                {/* Skeleton title */}
+                <div style={{
+                  width: 220, height: 22, borderRadius: 6,
+                  background: 'rgba(255,255,255,0.06)',
+                  marginBottom: 20,
+                  animation: 'shimmer 1.8s ease-in-out infinite',
+                }} />
+                {/* Skeleton cards row */}
+                <div style={{ display: 'flex', gap: 20 }}>
+                  {[0, 1, 2, 3, 4, 5].map(c => (
+                    <div key={c} style={{
+                      width: 264, height: 396, borderRadius: 8, flexShrink: 0,
+                      background: 'linear-gradient(110deg, rgba(255,255,255,0.04) 30%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 70%)',
+                      backgroundSize: '300% 100%',
+                      animation: `shimmer 1.8s ease-in-out infinite`,
+                      animationDelay: `${c * 120}ms`,
+                    }} />
+                  ))}
+                </div>
               </div>
-            </div>
+            ))}
           </div>
         )}
       </div>
@@ -693,6 +725,14 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         @keyframes pulse-glow {
           0%, 100% { box-shadow: 0 0 8px ${GLOW}; }
           50% { box-shadow: 0 0 20px ${ACCENT}; }
+        }
+        @keyframes shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @keyframes focusPulse {
+          0%, 100% { box-shadow: 0 0 20px rgba(255,0,110,0.4), 0 0 50px rgba(255,0,110,0.15); }
+          50% { box-shadow: 0 0 30px rgba(255,0,110,0.7), 0 0 70px rgba(255,0,110,0.3); }
         }
         @keyframes spin {
           from { transform: rotate(0deg); }
