@@ -389,7 +389,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         }}>
           o melhor · <span style={{ color: ACCENT }}>ziiiTV!</span>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           {TOPBAR_LINKS.map((link, i) => {
             const active        = focusZone === 'topbar' && topbarIdx === i
             const isCurrentView = activeView === link.view
@@ -530,7 +530,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   }}>
                     <div style={{
                       position: 'absolute', left: LEFT_PAD, top: Math.round(12 * VW),
-                      display: 'flex', flexDirection: 'row', gap: GAP,
+                      display: 'flex', flexDirection: 'row',
                       alignItems: 'flex-start',
                       transform: `translate3d(${cameraShift}px, 0, 0)`,
                       transition: `transform ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
@@ -539,7 +539,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                       {row.channels.map((ch, ci) => {
                         const diffCols = ci - focusedIndex
                         if (diffCols < -3 || diffCols > 6) {
-                          return <div key={ci} style={{ width: CARD_W, height: CARD_H, flexShrink: 0 }} />
+                          return <div key={ci} style={{ width: CARD_W, height: CARD_H, flexShrink: 0, marginRight: GAP }} />
                         }
                         const isFocused  = isRowFocused && ci === focusedIndex
                         const cardW      = isFocused ? WIDE_W : CARD_W
@@ -556,6 +556,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                           <div key={ci} onClick={() => onPlay(ch)} style={{
                             position: 'relative',
                             width: cardW, height: CARD_H, flexShrink: 0,
+                            marginRight: GAP,
                             zIndex: isFocused ? 10 : 1,
                             borderRadius: Math.round(8 * VW), cursor: 'pointer', overflow: 'hidden',
                             boxShadow: isFocused ? FOCUS_GLOW : 'none',
@@ -642,7 +643,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                           position: 'absolute', left: 80, top: CARD_H + 24,
                           width: 580, animation: 'fadeInHero 300ms ease-out',
                         }}>
-                          <div style={{ display: 'flex', gap: 12, fontSize: 18, color: '#e5e5e5', fontWeight: 600, marginBottom: 8, alignItems: 'center' }}>
+                          <div style={{ display: 'flex', fontSize: 18, color: '#e5e5e5', fontWeight: 600, marginBottom: 8, alignItems: 'center' }}>
                             <span style={{ color: '#10b981', fontWeight: 800 }}>{Math.round((tmdb?.rating || 8) * 10)}% match</span>
                             <span>{tmdb?.year || '2024'}</span>
                             <span style={{ border: '1px solid rgba(255,255,255,0.4)', padding: '0 4px', borderRadius: 4, textTransform: 'uppercase' }}>TV-MA</span>
@@ -680,7 +681,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                 background: 'rgba(255,255,255,0.06)', marginBottom: 20,
                 animation: 'shimmer 1.8s ease-in-out infinite',
               }} />
-              <div style={{ display: 'flex', gap: 20 }}>
+              <div style={{ display: 'flex' }}>
                 {[0,1,2,3,4,5].map(c => (
                   <div key={c} style={{
                     width: 317, height: 475, borderRadius: 8, flexShrink: 0,
@@ -714,7 +715,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
               sair do <span style={{ color: ACCENT }}>ziiiTV</span>?
             </div>
             <div style={{ fontSize: 18, color: TEXT_MUTED, marginBottom: 40 }}>tem certeza que deseja sair?</div>
-            <div style={{ display: 'flex', gap: 20, justifyContent: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
               {['cancelar', 'sair'].map((label, i) => {
                 const f = exitFocus === i
                 return (
