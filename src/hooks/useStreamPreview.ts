@@ -64,9 +64,20 @@ export function useStreamPreview(
     )
   }
 
+  // ─── Selecionar stream mais leve para preview (SD > HD > melhor) ──
+  const pickPreviewStream = (ch: Channel): string => {
+    const order: Array<Channel['activeStream']['quality']> = ['SD', 'UNKNOWN', 'HD', 'FHD', '4K']
+    for (const q of order) {
+      const s = ch.streams.find(s => s.quality === q)
+      if (s) return s.url
+    }
+    return ch.activeStream.url
+  }
+
   // ─── Iniciar preview ──────────────────────────────
   const startPreview = async (ch: Channel) => {
-    if (!ch.activeStream?.url) return;
+    const previewUrl = pickPreviewStream(ch)
+    if (!previewUrl) return;
     const channelId = ch.id
     activeIdRef.current = channelId
     setState('loading')
@@ -85,7 +96,7 @@ export function useStreamPreview(
       avplayRef.current = avplay
 
       // Prepara o elemento object do AVPlay
-      avplay.open(ch.activeStream.url)
+      avplay.open(previewUrl)
 
       avplay.setListener({
         onbufferingcomplete: () => {

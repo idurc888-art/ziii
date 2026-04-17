@@ -36,15 +36,24 @@ const TEXT_MUTED = '#a0a0a0'
 /** Altura do banner quando visível */
 const HERO_H = '87vh'
 
-const SIDEBAR_ICONS: Array<{ emoji: string; label: string; view?: DashboardView }> = [
-  { emoji: '🏠', label: 'home',     view: 'home'   },
-  { emoji: '🎬', label: 'filmes',   view: 'movies' },
-  { emoji: '⊞',  label: 'séries',  view: 'series' },
-  { emoji: '📺', label: 'live',     view: 'live'   },
-  { emoji: '📈', label: 'esportes' },
-  { emoji: '♡',  label: 'favoritos'},
+const SIDEBAR_ICONS = [
+  { 
+    svg: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>, 
+    label: 'painel' 
+  },
+  { 
+    svg: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>, 
+    label: 'novidades' 
+  },
+  { 
+    svg: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>, 
+    label: 'usuários' 
+  },
+  { 
+    svg: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>, 
+    label: 'configurações' 
+  },
 ]
-
 const TOPBAR_LINKS: Array<{ label: string; view: DashboardView }> = [
   { label: 'página principal', view: 'home'   },
   { label: 'filmes',           view: 'movies' },
@@ -273,8 +282,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       if (e.key === 'Enter' || e.keyCode === 13) {
         e.preventDefault()
         if (zone === 'sidebar') {
-          const item = SIDEBAR_ICONS[sidebarRef.current]
-          if (item?.view) setActiveView(item.view)
+          // Apenas placeholder visual para Enterprise settings por enquanto
+          // Ao apertar enter, não muda navegação, mas podemos piscar a UI.
           return
         }
         if (zone === 'topbar') {
@@ -372,10 +381,76 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       background: BG, color: '#fff',
       fontFamily: "'Outfit', sans-serif",
       overflow: 'hidden',
-      display: 'flex', flexDirection: 'column',
+      display: 'flex', flexDirection: 'row', // Mudado para ROW base
     }}>
 
-      {/* ── TOPBAR (sticky ao topo, nunca sai da tela) ─────────────────── */}
+      {/* ── SIDEBAR (Minimalista Enterprise) ───────────────────────────── */}
+      <div style={{
+        position: 'relative',
+        width: focusZone === 'sidebar' ? 320 : 80,
+        height: '100%',
+        background: 'rgba(0,0,0,0.95)',
+        borderRight: '1px solid rgba(255,255,255,0.05)',
+        zIndex: 100,
+        display: 'flex', flexDirection: 'column',
+        alignItems: focusZone === 'sidebar' ? 'flex-start' : 'center',
+        paddingTop: 72,
+        transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
+        flexShrink: 0,
+      }}>
+        {SIDEBAR_ICONS.map((item, i) => {
+          const isActive = focusZone === 'sidebar' && sidebarIdx === i
+          return (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center',
+              width: focusZone === 'sidebar' ? 'calc(100% - 40px)' : 48,
+              height: 48,
+              margin: focusZone === 'sidebar' ? '0 20px 16px 20px' : '0 0 24px 0',
+              padding: focusZone === 'sidebar' ? '0 20px' : '0',
+              justifyContent: focusZone === 'sidebar' ? 'flex-start' : 'center',
+              borderRadius: 24,
+              color: isActive ? '#fff' : 'rgba(255,255,255,0.4)',
+              background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
+              boxShadow: isActive ? `0 0 0 2px ${ACCENT}, 0 0 16px ${GLOW}` : 'none',
+              cursor: 'pointer',
+              transition: 'all 300ms ease',
+            }}>
+              <div style={{
+                width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+                transform: isActive ? 'scale(1.1)' : 'scale(1)',
+                transition: 'transform 300ms ease'
+              }}>
+                {item.svg}
+              </div>
+              
+              <div style={{
+                marginLeft: 16,
+                fontSize: 18,
+                fontWeight: 600,
+                textTransform: 'lowercase',
+                opacity: focusZone === 'sidebar' ? 1 : 0,
+                width: focusZone === 'sidebar' ? 'auto' : 0,
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                transition: 'opacity 300ms ease, width 300ms ease',
+              }}>
+                {item.label}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* ── CORPO PRINCIPAL ──────────────────────────────────────────────── */}
+      <div style={{
+        flex: 1,
+        display: 'flex', flexDirection: 'column',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+
+        {/* ── TOPBAR (sticky ao topo) ─────────────────────────────────────── */}
       <div style={{
         flexShrink: 0,
         position: 'relative', zIndex: 90,
@@ -435,7 +510,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         }}>
           <HeroBanner
             slides={heroSlides}
-            autoPlayInterval={0}
+            autoPlayInterval={8000}
             focused={focusZone === 'hero'}
             onSelect={(slide) => {
               if (slide.type === 'live') {
@@ -741,18 +816,19 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         </div>
       )}
 
-      <style>{`
-        @keyframes fadeInHero {
-          from { opacity: 0; transform: translateY(12px); }
-          to   { opacity: 1; transform: translateY(0);    }
-        }
+          <style>{`
+            @keyframes fadeInHero {
+              from { opacity: 0; transform: translateY(12px); }
+              to   { opacity: 1; transform: translateY(0);    }
+            }
         @keyframes shimmer {
           0%   { background-position:  200% 0; }
           100% { background-position: -200% 0; }
         }
         *::-webkit-scrollbar { display: none; }
         * { scrollbar-width: none; }
-      `}</style>
-    </div>
+          `}</style>
+        </div>
+      </div>
   )
 }
