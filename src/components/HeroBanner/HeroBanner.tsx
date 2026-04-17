@@ -39,16 +39,18 @@ export function HeroBanner({
   const autoPlayTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
   const lastKeyPressRef = useRef<number>(0);
 
-  // Hook nativo AVPlay para Background Video
+  // Hook nativo AVPlay para Background Video (double-buffer)
   const currentSlideValid = slides[currentIndex];
-  const { videoStyle, backdropStyle } = useStreamPreview(
+  const nextSlideValid    = slides[(currentIndex + 1) % Math.max(slides.length, 1)];
+  const { videoStyle, backdropStyle, activePlayerId } = useStreamPreview(
     currentSlideValid?.channel || null,
+    nextSlideValid?.channel || null,
     focused,
     {
-      idleDelay: 1500,
-      previewDuration: 15000,
+      idleDelay: 800,
+      previewDuration: 18000,
       seekToMs: 270000,
-      fadeDuration: 400,
+      fadeDuration: 350,
     }
   );
 
@@ -165,12 +167,21 @@ export function HeroBanner({
   return (
     <div className={`hero-viewport${focused ? ' hero-focused' : ''}`}>
       <object
-        id="av-hero-player"
+        id="av-hero-player-a"
         type="application/avplayer"
         style={{
           position: 'absolute', inset: 0, width: '100%', height: '100%',
-          zIndex: 0, pointerEvents: 'none',
-          ...videoStyle
+          zIndex: activePlayerId === 'av-hero-player-a' ? 0 : -1, pointerEvents: 'none',
+          ...(activePlayerId === 'av-hero-player-a' ? videoStyle : { opacity: 0 })
+        }}
+      />
+      <object
+        id="av-hero-player-b"
+        type="application/avplayer"
+        style={{
+          position: 'absolute', inset: 0, width: '100%', height: '100%',
+          zIndex: activePlayerId === 'av-hero-player-b' ? 0 : -1, pointerEvents: 'none',
+          ...(activePlayerId === 'av-hero-player-b' ? videoStyle : { opacity: 0 })
         }}
       />
       <div

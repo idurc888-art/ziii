@@ -327,7 +327,10 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
 
       if (zone === 'topbar') {
         if      (isRight) setTopbarIdx(i => Math.min(i + 1, TOPBAR_LINKS.length - 1))
-        else if (isLeft)  setTopbarIdx(i => Math.max(i - 1, 0))
+        else if (isLeft) {
+          if (topbarRef.current <= 0) setFocusZone('sidebar')
+          else setTopbarIdx(i => Math.max(i - 1, 0))
+        }
         else if (isDown)  { setFocusZone('hero'); setHeroState('focused') }
         return
       }
@@ -335,6 +338,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       if (zone === 'hero') {
         if      (isUp)   { setFocusZone('topbar'); setHeroState('default') }
         else if (isDown) { setFocusZone('content'); setHeroState('collapsed'); setContentRow(0) }
+        else if (isLeft) { setFocusZone('sidebar') }
         return
       }
 
@@ -350,6 +354,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         }
         else if (isLeft) {
           if (cols[rw] > 0) { const next = [...cols]; next[rw]--; setContentCols(next) }
+          else { setFocusZone('sidebar') }
         }
         return
       }
@@ -505,8 +510,11 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           top: 0, left: 0, right: 0,
           height: focusZone === 'hero' ? '100%' : (isHeroVisible ? HERO_H : '0px'),
           overflow: 'hidden',
-          transition: 'height 520ms cubic-bezier(0.25,1,0.5,1)',
+          transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
           zIndex: 10,
+          borderRadius: focusZone === 'hero' ? 0 : 16,
+          border: focusZone === 'hero' ? '2px solid #ff006e' : '2px solid transparent',
+          boxShadow: focusZone === 'hero' ? '0 0 32px rgba(255,0,110,0.55), 0 0 80px rgba(255,0,110,0.25)' : 'none',
         }}>
           <HeroBanner
             slides={heroSlides}

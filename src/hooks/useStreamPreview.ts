@@ -1,164 +1,206 @@
 // src/hooks/useStreamPreview.ts
-// Preview do stream real do canal — sem YouTube, funciona 100% no Tizen
+// Double-buffer AVPlay: próximo slide já carrega em background enquanto atual toca.
+// Quando slide muda → swap instantâneo, sem esperar buffer.
 
 import { useEffect, useRef, useState } from 'react'
 import type { Channel } from '../types/channel'
 
 interface PreviewOptions {
-  idleDelay?: number      // ms até iniciar preview (default: 1500)
-  previewDuration?: number // ms de duração do preview (default: 15000)
-  seekToMs?: number        // onde fazer seek no VOD (default: 270000 = 4min30s)
-  fadeDuration?: number    // ms do fade in/out (default: 400)
+  idleDelay?: number
+  previewDuration?: number
+  seekToMs?: number
+  fadeDuration?: number
 }
 
 export type PreviewState = 'idle' | 'loading' | 'playing' | 'error'
 
+// IDs dos dois elementos <object> AVPlay no DOM
+const PLAYER_IDS = ['av-hero-player-a', 'av-hero-player-b']
+
+function pickPreviewUrl(ch: Channel): string {
+  const order: Array<Channel['activeStream']['quality']> = ['SD', 'UNKNOWN', 'HD', 'FHD', '4K']
+  for (const q of order) {
+    const s = ch.streams.find(s => s.quality === q)
+    if (s) return s.url
+  }
+  return ch.activeStream.url
+}
+
+function isVOD(ch: Channel): boolean {
+  const url = (ch.activeStream?.url || '').toLowerCase()
+  return /\/(vod|movie|series|episode)\/|\.mp4$|\.mkv$/.test(url)
+}
+
 export function useStreamPreview(
   channel: Channel | null,
+  nextChannel: Channel | null,   // próximo slide — para pré-carregar
   isVisible: boolean,
   opts: PreviewOptions = {}
 ) {
   const {
-    idleDelay     = 1500,
-    previewDuration = 15000,
-    seekToMs      = 270000,  // 4min30s
-    fadeDuration  = 400,
+    idleDelay       = 800,
+    previewDuration = 18000,
+    seekToMs        = 270000,
+    fadeDuration    = 350,
   } = opts
 
-  const [state, setState]         = useState<PreviewState>('idle')
+  const [state, setState]           = useState<PreviewState>('idle')
   const [isVideoVisible, setIsVideoVisible] = useState(false)
+  const [activeSlot] = useState(0)   // 0 = player-a, 1 = player-b
 
+  const slotRef      = useRef(0)          // slot ativo
+  const players      = useRef<any[]>([null, null])  // instâncias avplay por slot
+  const buffered     = useRef<Set<string>>(new Set()) // IDs já em buffer
+  const activeIdRef  = useRef('')
   const idleTimer    = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const avplayRef    = useRef<any>(null)     // webapis.avplay
-  const objectRef    = useRef<HTMLObjectElement | null>(null)
-  const activeIdRef  = useRef<string>('')
 
-  // ─── Limpar tudo ──────────────────────────────────
+  const getAvplay = () => (window as any).webapis?.avplay
+
+  // ─── Para e fecha um slot ──────────────────────────
+  const closeSlot = (slot: number) => {
+    try { players.current[slot]?.stop?.() } catch {}
+    try { players.current[slot]?.close?.() } catch {}
+    players.current[slot] = null
+  }
+
+  // ─── Pré-carrega canal em background no slot inativo ──
+  const prefetch = (ch: Channel) => {
+    const avplay = getAvplay()
+    if (!avplay || buffered.current.has(ch.id)) return
+    const inactiveSlot = slotRef.current === 0 ? 1 : 0
+    closeSlot(inactiveSlot)
+
+    const url = pickPreviewUrl(ch)
+    try {
+      avplay.open(url)
+      avplay.setListener({
+        onbufferingcomplete: () => {
+          buffered.current.add(ch.id)
+          // Seek antecipado no VOD
+          if (isVOD(ch)) {
+            try { avplay.seekTo(seekToMs) } catch {}
+          }
+          // Pausa silencioso — pronto para swap instantâneo
+          try { avplay.pause() } catch {}
+        },
+        onerror: () => { closeSlot(inactiveSlot) }
+      })
+      avplay.setDisplayRect(0, 0, 1, 1) // invisível
+      avplay.play()
+      players.current[inactiveSlot] = avplay
+    } catch {}
+  }
+
+  // ─── Cleanup geral ────────────────────────────────
   const cleanup = () => {
     clearTimeout(idleTimer.current)
     clearTimeout(previewTimer.current)
     setIsVideoVisible(false)
     setState('idle')
-
-    try {
-      if (avplayRef.current) {
-        avplayRef.current.stop()
-        avplayRef.current.close()
-      }
-    } catch {}
-    avplayRef.current = null
+    closeSlot(0)
+    closeSlot(1)
+    buffered.current.clear()
+    activeIdRef.current = ''
   }
 
-  // ─── Detectar se é VOD ou LIVE ────────────────────
-  const isVOD = (ch: Channel): boolean => {
-    if (!ch.activeStream?.url) return false;
-    const url = ch.activeStream.url.toLowerCase()
-    return (
-      url.includes('/vod/') ||
-      url.includes('/movie/') ||
-      url.includes('/series/') ||
-      url.includes('/episode/') ||
-      url.endsWith('.mp4') ||
-      url.endsWith('.mkv')
-    )
-  }
-
-  // ─── Selecionar stream mais leve para preview (SD > HD > melhor) ──
-  const pickPreviewStream = (ch: Channel): string => {
-    const order: Array<Channel['activeStream']['quality']> = ['SD', 'UNKNOWN', 'HD', 'FHD', '4K']
-    for (const q of order) {
-      const s = ch.streams.find(s => s.quality === q)
-      if (s) return s.url
-    }
-    return ch.activeStream.url
-  }
-
-  // ─── Iniciar preview ──────────────────────────────
-  const startPreview = async (ch: Channel) => {
-    const previewUrl = pickPreviewStream(ch)
-    if (!previewUrl) return;
+  // ─── Iniciar preview do canal atual ───────────────
+  const startPreview = (ch: Channel) => {
+    const avplay = getAvplay()
     const channelId = ch.id
     activeIdRef.current = channelId
     setState('loading')
 
-    try {
-      // Obtém AVPlay do Tizen
-      const avplay = (window as any).webapis?.avplay
-      if (!avplay) {
-        // Fora do Tizen (dev local) — simula sucesso
-        setState('playing')
-        setIsVideoVisible(true)
-        previewTimer.current = setTimeout(cleanup, previewDuration)
-        return
+    if (!avplay) {
+      // Dev local — simula
+      setState('playing')
+      setIsVideoVisible(true)
+      previewTimer.current = setTimeout(cleanup, previewDuration)
+      return
+    }
+
+    const slot = slotRef.current
+    const alreadyBuffered = buffered.current.has(channelId)
+
+    const onReady = () => {
+      if (activeIdRef.current !== channelId) return
+      if (!alreadyBuffered && isVOD(ch)) {
+        try { avplay.seekTo(seekToMs) } catch {}
       }
-
-      avplayRef.current = avplay
-
-      // Prepara o elemento object do AVPlay
-      avplay.open(previewUrl)
-
-      avplay.setListener({
-        onbufferingcomplete: () => {
-          if (activeIdRef.current !== channelId) return
-
-          const duration = avplay.getDuration()
-          const isLive = duration === 0 || duration === -1
-
-          if (!isLive && isVOD(ch)) {
-            // VOD: seek para 4min30s
-            try { avplay.seekTo(seekToMs) } catch {}
-          }
-          // Fade in
-          setIsVideoVisible(true)
-          setState('playing')
-
-          // Timer para encerrar preview
-          previewTimer.current = setTimeout(() => {
-            if (activeIdRef.current !== channelId) return
-            setIsVideoVisible(false)
-            setTimeout(cleanup, fadeDuration)
-          }, previewDuration)
-        },
-
-        onerror: () => {
-          if (activeIdRef.current !== channelId) return
-          setState('error')
-          cleanup()
-        },
-      })
-
-      // Set display rect based on global window size or container size.
       avplay.setDisplayRect(0, 0, window.screen.width, window.screen.height)
-      avplay.play()
+      setIsVideoVisible(true)
+      setState('playing')
 
-    } catch (err) {
-      console.warn('[StreamPreview] erro:', err)
-      setState('error')
+      previewTimer.current = setTimeout(() => {
+        if (activeIdRef.current !== channelId) return
+        setIsVideoVisible(false)
+        setTimeout(cleanup, fadeDuration)
+      }, previewDuration)
+    }
+
+    if (alreadyBuffered && players.current[slot]) {
+      // Swap instantâneo — já estava em buffer
+      try {
+        avplay.setDisplayRect(0, 0, window.screen.width, window.screen.height)
+        avplay.resume()
+      } catch {}
+      onReady()
+    } else {
+      closeSlot(slot)
+      const url = pickPreviewUrl(ch)
+      try {
+        avplay.open(url)
+        avplay.setListener({
+          onbufferingcomplete: onReady,
+          onerror: () => { if (activeIdRef.current === channelId) setState('error') }
+        })
+        avplay.setDisplayRect(0, 0, window.screen.width, window.screen.height)
+        avplay.play()
+        players.current[slot] = avplay
+      } catch (e) {
+        console.warn('[StreamPreview]', e)
+        setState('error')
+      }
     }
   }
 
-  // ─── Efeito principal ─────────────────────────────
+  // ─── Efeito: canal atual mudou ────────────────────
   useEffect(() => {
-    cleanup()
+    clearTimeout(idleTimer.current)
+    clearTimeout(previewTimer.current)
+    setIsVideoVisible(false)
+
+    // Fecha apenas o slot ativo (mantém o prefetch do inativo)
+    closeSlot(slotRef.current)
+    setState('idle')
+    activeIdRef.current = ''
 
     if (!channel || !isVisible) return
 
-    idleTimer.current = setTimeout(() => {
-      startPreview(channel)
-    }, idleDelay)
-
-    return cleanup
+    idleTimer.current = setTimeout(() => startPreview(channel), idleDelay)
+    return () => {
+      clearTimeout(idleTimer.current)
+      clearTimeout(previewTimer.current)
+    }
   }, [channel?.id, isVisible])
+
+  // ─── Efeito: pré-carrega próximo slide ────────────
+  useEffect(() => {
+    if (!nextChannel || !isVisible) return
+    // Só prefetch depois que o atual já começou a tocar
+    const t = setTimeout(() => prefetch(nextChannel), 3000)
+    return () => clearTimeout(t)
+  }, [nextChannel?.id, isVisible])
+
+  // ─── Cleanup ao desmontar ─────────────────────────
+  useEffect(() => () => cleanup(), [])
 
   return {
     state,
     isVideoVisible,
-    objectRef,         // attach no <object> element do AVPlay
+    activePlayerId: PLAYER_IDS[activeSlot],
     isPlaying: state === 'playing',
     isLoading: state === 'loading',
-
-    // Estilos de fade
     videoStyle: {
       opacity: isVideoVisible ? 1 : 0,
       transition: `opacity ${fadeDuration}ms ease-in-out`,
