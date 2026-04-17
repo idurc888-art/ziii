@@ -380,10 +380,14 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         flexShrink: 0,
         position: 'relative', zIndex: 90,
         height: 72, display: 'flex', alignItems: 'center', padding: '0 80px',
-        background: isHeroVisible
-          ? 'linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0.4), transparent)'
-          : 'rgba(0,0,0,0.92)',
-        transition: 'background 400ms ease',
+        background: focusZone === 'hero'
+          ? 'rgba(0,0,0,0.1)'
+          : isHeroVisible
+            ? 'linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0.4), transparent)'
+            : 'rgba(0,0,0,0.92)',
+        borderBottom: focusZone === 'topbar' ? '2px solid #ff006e' : '2px solid transparent',
+        boxShadow: focusZone === 'topbar' ? '0 4px 24px rgba(255,0,110,0.4)' : 'none',
+        transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
       }}>
         <div style={{
           fontSize: 18, fontWeight: 900, letterSpacing: 1,
@@ -420,11 +424,11 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         overflow: 'hidden',
       }}>
 
-        {/* BANNER — absolutamente posicionado, some sem empurrar rows */}
+        {/* BANNER — expande para 100% quando focado, ou HERO_H quando vizinho */}
         <div style={{
           position: 'absolute',
           top: 0, left: 0, right: 0,
-          height: isHeroVisible ? HERO_H : '0px',
+          height: focusZone === 'hero' ? '100%' : (isHeroVisible ? HERO_H : '0px'),
           overflow: 'hidden',
           transition: 'height 520ms cubic-bezier(0.25,1,0.5,1)',
           zIndex: 10,
@@ -453,7 +457,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             top: 0, left: 0, right: 0, bottom: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
-            paddingTop: isHeroVisible ? HERO_H : '8px',
+            paddingTop: focusZone === 'hero' ? '100%' : (isHeroVisible ? HERO_H : '8px'),
             transition: 'padding-top 520ms cubic-bezier(0.25,1,0.5,1)',
             scrollBehavior: 'smooth',
           }}
