@@ -20,4 +20,13 @@ export default defineConfig({
       output: { ecma: 2015 },
     },
   },
+  server: {
+    host: true,
+    port: 5173,
+    strictPort: true,
+    hmr: {
+      port: 5173,
+      clientPort: 5173,
+    }
+  }
 })

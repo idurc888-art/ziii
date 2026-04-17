@@ -3,11 +3,10 @@
 .hero-viewport {
   position: relative;
   width: 100vw;
-  height: 60vh;
-  min-height: 400px;
+  height: 100vh;
+  min-height: 100vh;
   overflow: hidden;
   user-select: none;
-  margin-bottom: 40px;
 }
 
 .hero-track {
@@ -54,7 +53,7 @@
 
 .hero-content {
   position: absolute;
-  bottom: 14%;
+  bottom: 25%;
   left: 7%;
   z-index: 2;
   max-width: 460px;
@@ -143,7 +142,7 @@
 /* Dots de navegação */
 .hero-dots {
   position: absolute;
-  bottom: 28px;
+  bottom: 50px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -192,7 +191,7 @@
 /* Controles */
 .hero-controls {
   position: absolute;
-  bottom: 40px;
+  bottom: 60px;
   right: 20px;
   z-index: 20;
 }
@@ -220,8 +219,8 @@
 
 /* Estado vazio */
 .hero-empty {
-  height: 60vh;
-  min-height: 400px;
+  height: 100vh;
+  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -235,7 +234,7 @@
 /* Responsividade para TV */
 @media (max-width: 1920px) {
   .hero-viewport {
-    height: 55vh;
+    height: 100vh;
   }
 }
 

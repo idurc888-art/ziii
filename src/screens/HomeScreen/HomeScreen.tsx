@@ -10,8 +10,9 @@ import {
   buildTvContent 
 } from '../../services/contentSelector'
 import { recordPlay } from '../../services/historyService'
-import { HeroBanner } from '../../components/HeroBanner/HeroBanner'
-import { mockHeroSlides } from '../../components/HeroBanner/heroData'
+import { useHeroTrailer } from '../../hooks/useHeroTrailer'
+import { HeroBanner, mockHeroSlides } from '../../components/HeroBanner'
+import { TopMoviesBanner, mockTopMovies } from '../../components/TopMoviesBanner'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Channel {
@@ -63,6 +64,12 @@ const CATEGORY_ICONS: Record<string, { emoji: string; color: string }> = {
   noticias: { emoji: '📰', color: '#94a3b8' },
   outros: { emoji: '🔥', color: '#ff6b35' },
 }
+
+// ─── Tizen Focus Constants ───────────────────────────────────────────────────
+const FOCUS_SCALE = 1.05;
+const FOCUS_DURATION = 160;
+const FOCUS_EASING = 'ease-out';
+const UNFOCUS_OPACITY = 0.88;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENT
@@ -135,6 +142,29 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     }
   }, [debouncedPreview, contentRow, rows, liveTmdbData])
 
+  // ─── Hero Trailer System ─────────────────────────────────────────────
+  // Determinar qual item está em destaque no hero
+  // Por enquanto, usamos o primeiro slide do HeroBanner
+  const currentHeroItem: TMDBResult | null = mockHeroSlides[0] ? {
+    tmdbId: 1, // Mock ID - na implementação real viria do TMDB
+    title: mockHeroSlides[0].title,
+    poster: mockHeroSlides[0].backgroundImage,
+    backdrop: mockHeroSlides[0].backgroundImage,
+    overview: mockHeroSlides[0].description,
+    rating: 8.0, // Mock rating
+    year: '2024', // Mock year
+    mediaType: 'movie', // Mock type
+    trailerKey: '' // Será preenchido pelo hook
+  } : null;
+
+  // Hook para controlar autoplay de trailer
+  useHeroTrailer(currentHeroItem, {
+    idleDelay: 2500, // 2.5 segundos
+    fadeDuration: 800, // 0.8 segundos para fade
+    isHeroVisible: focusZone !== 'content', // Hero visível quando não está no content
+    focusZone: focusZone
+  });
+
   // ─── Refs ─────────────────────────────────────────────────────────────
   const focusZoneRef = useRef(focusZone)
   const heroStateRef = useRef(heroState)
@@ -156,18 +186,15 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   showExitRef.current = showExit
   exitFocusRef.current = exitFocus
 
-  // ─── Scroll cards into view ───────────────────────────────────────────
+  // ─── Scroll Container Vertical ─────────────────────────────────────────
   const rowRefs = useRef<(HTMLDivElement | null)[]>([])
   useEffect(() => {
     if (focusZone !== 'content') return
     const row = rowRefs.current[contentRow]
-    if (!row) return
-    const col = contentCols[contentRow]
-    const card = row.children[col] as HTMLElement
-    if (card) {
-      card.scrollIntoView({ behavior: 'smooth' as ScrollBehavior, block: 'nearest', inline: 'nearest' })
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth' as ScrollBehavior, block: 'center' })
     }
-  }, [contentRow, contentCols, focusZone])
+  }, [contentRow, focusZone, contentCols])
 
   // ─── D-pad Navigation ────────────────────────────────────────────────
   useEffect(() => {
@@ -342,8 +369,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         <div style={{
           position: 'relative',
           width: '100%',
-          height: focusZone === 'content' ? '200px' : '60vh',
-          minHeight: focusZone === 'content' ? '200px' : '400px',
+          height: focusZone === 'content' ? '200px' : '100vh',
+          minHeight: focusZone === 'content' ? '200px' : '100vh',
           overflow: 'hidden',
           transition: 'height 500ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}>
@@ -370,16 +397,28 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           />
         </div>
 
+        {/* TOP MOVIES BANNER - Comentado pois estava quebrando o layout ao deslizar as linhas por cima dele 
+        <TopMoviesBanner
+          movies={mockTopMovies}
+          autoPlayInterval={5000}
+          onSelect={(movie) => {
+            console.log('TopMoviesBanner: filme selecionado', movie.title);
+          }}
+          onAddToList={(movie) => {
+            console.log('TopMoviesBanner: adicionar à lista', movie.title);
+          }}
+        />
+        */}
         {/* ROWS — ficam logo abaixo do hero */}
         <div style={{
-          position: focusZone === 'content' ? 'relative' : 'absolute',
-          top: focusZone === 'content' ? 0 : '100vh',
+          position: 'relative',
+          top: 0,
           width: '100%',
           transform: `translateY(${contentOffset}px)`,
           transition: 'transform 500ms cubic-bezier(0.4,0,0.2,1)',
         }}>
           {rows.map((row, rowIdx) => (
-            <div key={rowIdx} style={{ padding: '24px 0', overflow: 'visible' }}>
+            <div ref={el => { rowRefs.current[rowIdx] = el }} key={rowIdx} style={{ padding: '24px 0', overflow: 'visible' }}>
               <div style={{
                 padding: '0 80px', display: 'flex', justifyContent: 'space-between',
                 alignItems: 'center', marginBottom: 16,
@@ -410,9 +449,13 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                         display: 'flex', flexDirection: 'column',
                         alignItems: 'center', justifyContent: 'center', gap: 12,
                         fontSize: '1.1rem', fontWeight: 700, textTransform: 'lowercase',
-                        transform: focused ? 'translateY(-8px)' : 'translateY(0)',
-                        boxShadow: focused ? `0 15px 30px ${GLOW}` : 'none',
-                        transition: 'all 280ms cubic-bezier(0.34,1.56,0.64,1)',
+                        transformOrigin: 'center center',
+                        willChange: 'transform',
+                        transform: focused ? `scale(${FOCUS_SCALE}) translateY(-8px)` : 'scale(1) translateY(0)',
+                        boxShadow: focused ? `0 8px 32px rgba(0, 0, 0, 0.55)` : 'none',
+                        zIndex: focused ? 10 : 0,
+                        opacity: focused ? 1 : UNFOCUS_OPACITY,
+                        transition: `transform ${FOCUS_DURATION}ms ${FOCUS_EASING}, box-shadow ${FOCUS_DURATION}ms ${FOCUS_EASING}, opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}, border-color ${FOCUS_DURATION}ms ${FOCUS_EASING}, background-color ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                         cursor: 'pointer',
                       }}>
                         <span style={{ fontSize: 28 }}>{info.emoji}</span>
@@ -421,123 +464,163 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                     )
                   })}
                 </div>
-              ) : (
+              ) : (() => {
+                const CARD_W = 220;
+                const CARD_H = 330;
+                const GAP = 20;
+                const STEP = CARD_W + GAP;
+                
+                const isRowFocused = focusZone === 'content' && contentRow === rowIdx
+                const focusedIndex = contentCols[rowIdx] || 0
+                const isVirtualRow = Math.abs(contentRow - rowIdx) <= 2
+
+                if (!isVirtualRow) {
+                  return <div style={{ height: 380 }} />
+                }
+
+                // Cálculo da Câmera (Foco Ancorado na Esquerda)
+                const cameraShift = -(focusedIndex * STEP)
+
+                // Altura da row expande se estiver focada (espaço para o texto)
+                const rowHeight = CARD_H + (isRowFocused ? 140 : 40)
+
+                return (
                 <div
-                  ref={el => { rowRefs.current[rowIdx] = el }}
                   style={{
-                    display: 'flex',
-                    gap: row.type === 'portrait' ? 14 : 8,
-                    overflowX: 'auto', overflowY: 'visible',
-                    padding: row.type === 'portrait' ? '12px 0 20px 30px' : '12px 0 20px 80px',
-                    paddingRight: 'calc(100vw - 480px)',
-                    scrollbarWidth: 'none',
-                    alignItems: 'flex-start',
+                    position: 'relative',
+                    width: '100%',
+                    height: rowHeight,
+                    paddingTop: 12, overflow: 'hidden',
+                    transition: `height ${FOCUS_DURATION}ms ${FOCUS_EASING}`
                   }}
                 >
+                  <div style={{
+                    position: 'absolute',
+                    left: 80, top: 12,
+                    display: 'flex', flexDirection: 'row', gap: GAP,
+                    alignItems: 'flex-start',
+                    transform: `translate3d(${cameraShift}px, 0, 0)`,
+                    transition: `transform ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
+                    willChange: 'transform'
+                  }}>
                   {row.channels.map((ch, ci) => {
-                    const focused = focusZone === 'content' && contentRow === rowIdx && contentCols[rowIdx] === ci
+                    const diffCols = ci - focusedIndex
 
-                    if (row.type === 'portrait') {
-                      return (
-                        <div key={ci} onClick={() => onPlay(ch)} style={{
-                          position: 'relative', width: 220, minWidth: 220, height: 330,
-                          borderRadius: 12, overflow: 'hidden', cursor: 'pointer', flexShrink: 0,
-                          transform: focused ? 'scale(1.05)' : 'scale(1)',
-                          zIndex: focused ? 10 : 1,
-                          transition: 'all 280ms cubic-bezier(0.34,1.56,0.64,1)',
-                        }}>
-                          <div style={{
-                            width: '100%', height: '100%',
-                            background: `linear-gradient(135deg, #1a1a2e, #16213e)`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 48, opacity: 0.85,
-                            border: focused ? `3px solid ${ACCENT}` : '1px solid rgba(255,255,255,0.07)',
-                            borderRadius: 12,
-                            boxShadow: focused ? `0 0 0 2px ${ACCENT}, 0 0 28px ${GLOW}` : 'none',
-                          }}>
-                            {(() => { const t = row.tmdb?.get(ch.name); const src = t?.poster || ch.logo; return src ? <img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12 }} /> : '📺' })()}
-                          </div>
-                          <div style={{
-                            position: 'absolute', bottom: 0, left: 0, right: 0,
-                            padding: '8px 4px 6px', background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
-                          }}>
-                            <div style={{
-                              fontSize: '0.7rem', fontWeight: 700,
-                              fontFamily: "'Barlow Condensed', sans-serif",
-                              textTransform: 'uppercase', whiteSpace: 'nowrap',
-                              overflow: 'hidden', textOverflow: 'ellipsis',
-                            }}>{ch.name}</div>
-                          </div>
-                        </div>
-                      )
+                    // Virtual DOM - mantém o espaço mas destrói o conteúdo
+                    if (diffCols < -4 || diffCols > 6) {
+                      return <div key={ci} style={{ flex: `0 0 ${CARD_W}px`, height: CARD_H }} />
                     }
 
-                    const isWide = row.type === 'wide'
+                    const isFocused = isRowFocused && ci === focusedIndex;
+                    const expandedW = 580;
+                    const currentW = isFocused ? expandedW : CARD_W;
+                    
                     return (
                       <div key={ci} onClick={() => onPlay(ch)} style={{
-                        position: 'relative', display: 'flex', alignItems: 'flex-end',
-                        minWidth: isWide ? 420 : 300, flexShrink: 0, cursor: 'pointer',
-                        transition: 'all 280ms cubic-bezier(0.34,1.56,0.64,1)',
+                        position: 'relative',
+                        flex: `0 0 ${currentW}px`, height: CARD_H,
+                        willChange: 'flex-basis, opacity, transform',
+                        zIndex: isFocused ? 10 : 1,
+                        opacity: (isRowFocused && !isFocused) ? UNFOCUS_OPACITY : 1,
+                        borderRadius: 8, cursor: 'pointer', overflow: 'hidden',
+                        boxShadow: isFocused ? '0 10px 40px rgba(0,0,0,0.8)' : 'none',
+                        transition: `flex ${FOCUS_DURATION}ms ${FOCUS_EASING}, opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}, box-shadow ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                       }}>
-                        {isWide && (
-                          <div style={{
-                            fontSize: '8rem', fontWeight: 900, lineHeight: 1,
-                            color: 'transparent',
-                            WebkitTextStroke: focused ? `2px ${ACCENT}` : '2px rgba(255,255,255,0.15)',
-                            fontFamily: "'Outfit'", width: 120, textAlign: 'right',
-                            marginBottom: -20, marginRight: -3, zIndex: 2,
-                            textShadow: focused ? `0 0 20px ${GLOW}` : 'none',
-                            transition: 'all 200ms',
-                          }}>
-                            {ci + 1}
-                          </div>
-                        )}
-                        <div style={{ position: 'relative' }}>
-                          <div style={{
-                            width: isWide ? 300 : 260, height: isWide ? 170 : 146,
-                            borderRadius: 14, overflow: 'hidden',
-                            background: `linear-gradient(135deg, #0f0f23, #1a1a2e)`,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            fontSize: 36, opacity: focused ? 1 : 0.8,
-                            border: focused ? `3px solid ${ACCENT}` : '1px solid rgba(255,255,255,0.07)',
-                            boxShadow: focused ? `0 0 0 2px ${ACCENT}, 0 0 28px ${GLOW}, 0 0 40px ${GLOW}` : 'none',
-                            transition: 'all 200ms',
-                          }}>
-                            {(() => { const t = row.tmdb?.get(ch.name); const src = t?.poster || ch.logo; return src ? <img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 14 }} /> : '📺' })()}
-                          </div>
-                          {isWide && ci < 3 && (
-                            <div style={{
-                              position: 'absolute', top: 10, left: 10,
-                              fontSize: '0.58rem', fontWeight: 900, letterSpacing: 1.5,
-                              textTransform: 'uppercase', padding: '3px 8px', borderRadius: 6,
-                              background: ci === 0 ? 'rgba(255,0,110,0.85)' : ci === 1 ? 'rgba(77,124,254,0.85)' : 'rgba(251,191,36,0.85)',
-                              color: ci === 2 ? '#000' : '#fff',
-                            }}>
-                              {ci === 0 ? '🔥 destaque' : ci === 1 ? '✨ novo' : '⭐ popular'}
-                            </div>
-                          )}
-                          {(() => { const t = row.tmdb?.get(ch.name); const yr = t?.year || ''; return yr ? (
-                            <div style={{
-                              position: 'absolute', bottom: 8, right: 8,
-                              background: 'rgba(0,0,0,0.75)', color: 'rgba(255,255,255,0.8)',
-                              fontSize: '0.62rem', fontWeight: 700,
-                              fontFamily: "'Barlow Condensed', sans-serif",
-                              letterSpacing: 1, padding: '3px 7px', borderRadius: 6,
-                              border: '1px solid rgba(255,255,255,0.15)',
-                            }}>{yr}</div>) : null })()}
-                          <div style={{
-                            fontSize: '0.9rem', fontWeight: 700,
-                            fontFamily: "'Barlow Condensed', sans-serif",
-                            letterSpacing: 0.5, textTransform: 'uppercase',
-                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                            padding: '6px 4px 0', maxWidth: isWide ? 300 : 260,
-                          }}>{ch.name}</div>
+                        {/* Container fixo para o Poster ancorado à esquerda, impede que o Flex distorça a imagem durante o slide */}
+                        <div style={{
+                          position: 'absolute', left: 0, top: 0,
+                          width: CARD_W, height: '100%',
+                          background: '#111', border: isFocused ? `3px solid ${ACCENT}` : `1px solid transparent`,
+                          transition: `border-color ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
+                          borderRadius: 8, zIndex: 3, overflow: 'hidden'
+                        }}>
+                          {(() => { 
+                             const t = row.tmdb?.get(ch.name); 
+                             const src = t?.poster || ch.logo; 
+                             return src ? <img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center'}}>📺</div>;
+                          })()}
+                        </div>
+
+                        {/* Expansion Area (Backdrop + Fallback Title) */}
+                        <div style={{
+                          position: 'absolute', left: CARD_W - 8, top: 0,
+                          width: 368, height: '100%',
+                          background: '#111',
+                          border: `3px solid ${ACCENT}`, borderLeft: 'none',
+                          borderRadius: '0 8px 8px 0',
+                          opacity: isFocused ? 1 : 0, overflow: 'hidden',
+                          transition: `opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
+                          zIndex: 2,
+                        }}>
+                           {(() => { 
+                             const bk = row.tmdb?.get(ch.name)?.backdrop; 
+                             if (!bk && !ch.logo) return null;
+                             return <img src={bk || ch.logo} style={{
+                               width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6,
+                             }}/> 
+                           })()}
+                           <div style={{
+                             position: 'absolute', bottom: 0, left: 0, right: 0, height: '60%',
+                             background: 'linear-gradient(transparent, rgba(0,0,0,0.95))'
+                           }}/>
+                           <div style={{
+                             position: 'absolute', bottom: 20, left: 24, right: 24,
+                             fontSize: 28, fontWeight: 900, textTransform: 'uppercase', textShadow: '0 4px 12px rgba(0,0,0,0.9)'
+                           }}>
+                             {ch.name}
+                           </div>
+                        </div>
+
+                        {/* Fallback título no Poster Inativo */}
+                        <div style={{
+                          position: 'absolute', bottom: 0, left: 0, width: CARD_W, height: '40%',
+                          background: 'linear-gradient(transparent, rgba(0,0,0,0.9))',
+                          zIndex: 4, opacity: isFocused ? 0 : 1, transition: `opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}`, pointerEvents: 'none'
+                        }}>
+                           <div style={{
+                             position: 'absolute', bottom: 12, left: 12, right: 12,
+                             fontSize: '0.8rem', fontWeight: 700, fontFamily: "'Barlow Condensed', sans-serif",
+                             textTransform: 'uppercase', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                           }}>{ch.name}</div>
                         </div>
                       </div>
                     )
                   })}
+                  </div>
+
+                  {/* Meta Data Overlay - Só na row focada e estilo portrait */}
+                  {isRowFocused && (() => {
+                    const fch = row.channels[focusedIndex];
+                    if (!fch) return null;
+                    const tmdb = row.tmdb?.get(fch.name);
+                    return (
+                      <div 
+                        key={fch.name} 
+                        style={{
+                          position: 'absolute', left: 80, top: CARD_H + 24,
+                          width: 580, 
+                          animation: `fadeInHero 300ms ease-out`,
+                        }}
+                      >
+                        <div style={{ display: 'flex', gap: 12, fontSize: 14, color: '#e5e5e5', fontWeight: 600, marginBottom: 8, alignItems: 'center' }}>
+                          <span style={{ color: '#10b981', fontWeight: 800 }}>{Math.round((tmdb?.rating || 8)*10)}% match</span>
+                          <span>{tmdb?.year || '2024'}</span>
+                          <span style={{ border: '1px solid rgba(255,255,255,0.4)', padding: '0 4px', borderRadius: 4, textTransform: 'uppercase' }}>TV-MA</span>
+                          <span style={{ color: '#fff', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 300 }}>{tmdb?.title || fch.name}</span>
+                        </div>
+                        <div style={{
+                           fontSize: 15, color: '#a3a3a3', lineHeight: 1.4,
+                           display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden'
+                        }}>
+                          {tmdb?.overview || `Sintonize ${fch.name}. Aproveite o melhor do entretenimento diretamente do cosmos com nossa infraestrutura de hipervelocidade.`}
+                        </div>
+                      </div>
+                    )
+                  })()}
+
                 </div>
-              )}
+                )
+              })()}
             </div>
           ))}
         </div>
@@ -625,3 +708,4 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     </div>
   )
 }
+
