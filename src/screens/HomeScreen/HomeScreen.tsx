@@ -594,8 +594,19 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                                 whiteSpace: 'nowrap',
                                 textShadow: '0 2px 10px rgba(0,0,0,0.99)',
                                 color: '#fff',
+                                paddingRight: isFocused && ch.logo ? 64 : 0,
                               }}>{ch.name}</div>
                             </div>
+                            {/* Logo do Canal/Streaming (visivel apenas no card Wide) */}
+                            {isFocused && ch.logo && (
+                              <img src={ch.logo} style={{
+                                position: 'absolute', bottom: 8, right: 14,
+                                maxWidth: 56, maxHeight: 34,
+                                objectFit: 'contain', zIndex: 5,
+                                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.9))',
+                                opacity: 0.95
+                              }} onError={(e) => (e.currentTarget.style.display = 'none')} />
+                            )}
                             {/* Badge de Qualidade */}
                             {badgeColor && (
                               <div style={{
