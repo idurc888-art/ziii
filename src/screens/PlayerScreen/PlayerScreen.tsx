@@ -5,7 +5,7 @@ import { avplayLoad, avplayStop, isAVPlayAvailable } from '../../services/avplay
 
 const ACCENT      = '#E50914'
 const OSD_TIMEOUT = 4000
-const DEBUG_KEYS  = true
+const DEBUG_KEYS  = false  // ★ PRODUÇÃO: false
 
 const KEYS = {
   UP: 38, DOWN: 40, LEFT: 37, RIGHT: 39,
@@ -30,23 +30,26 @@ interface State {
   osdVisible: boolean
   focusZone:  FocusZone
   ctrlFocus:  number
+  slowWarning: boolean
   debugKeys:  Array<{ code: number; key: string }>
 }
 
 type Action =
-  | { type: 'SET_STATUS'; status: PlayerStatus; error?: string }
-  | { type: 'SET_OSD';    visible: boolean }
-  | { type: 'SET_FOCUS';  zone: FocusZone; ctrl?: number }
-  | { type: 'CTRL_MOVE';  dir: 'left' | 'right' }
-  | { type: 'DEBUG_KEY';  code: number; key: string }
+  | { type: 'SET_STATUS';   status: PlayerStatus; error?: string }
+  | { type: 'SET_OSD';      visible: boolean }
+  | { type: 'SET_FOCUS';    zone: FocusZone; ctrl?: number }
+  | { type: 'CTRL_MOVE';    dir: 'left' | 'right' }
+  | { type: 'SLOW_WARNING'; show: boolean }
+  | { type: 'DEBUG_KEY';    code: number; key: string }
 
 function reducer(s: State, a: Action): State {
   switch (a.type) {
-    case 'SET_STATUS': return { ...s, status: a.status, error: a.error ?? s.error }
-    case 'SET_OSD':    return { ...s, osdVisible: a.visible }
-    case 'SET_FOCUS':  return { ...s, focusZone: a.zone, ctrlFocus: a.ctrl ?? s.ctrlFocus }
-    case 'CTRL_MOVE':  return { ...s, ctrlFocus: a.dir === 'left' ? Math.max(0, s.ctrlFocus - 1) : Math.min(CTRL_COUNT - 1, s.ctrlFocus + 1) }
-    case 'DEBUG_KEY':  return { ...s, debugKeys: [{ code: a.code, key: a.key }, ...s.debugKeys.slice(0, 7)] }
+    case 'SET_STATUS':   return { ...s, status: a.status, error: a.error ?? s.error, slowWarning: false }
+    case 'SET_OSD':      return { ...s, osdVisible: a.visible }
+    case 'SET_FOCUS':    return { ...s, focusZone: a.zone, ctrlFocus: a.ctrl ?? s.ctrlFocus }
+    case 'CTRL_MOVE':    return { ...s, ctrlFocus: a.dir === 'left' ? Math.max(0, s.ctrlFocus - 1) : Math.min(CTRL_COUNT - 1, s.ctrlFocus + 1) }
+    case 'SLOW_WARNING': return { ...s, slowWarning: a.show }
+    case 'DEBUG_KEY':    return { ...s, debugKeys: [{ code: a.code, key: a.key }, ...s.debugKeys.slice(0, 7)] }
     default: return s
   }
 }
@@ -54,12 +57,13 @@ function reducer(s: State, a: Action): State {
 const INITIAL: State = {
   status: 'loading', error: null,
   osdVisible: true, focusZone: 'none', ctrlFocus: CTRL.PLAY,
+  slowWarning: false,
   debugKeys: [],
 }
 
-// ─── Retry Config ────────────────────────────────────────────────────────────
-const RETRY_DELAYS = [1000, 3000, 5000, 8000, 12000] // Exponential backoff
-const MAX_RETRIES = RETRY_DELAYS.length
+const RETRY_DELAYS = [1000, 3000, 5000, 8000, 12000]
+const MAX_RETRIES  = RETRY_DELAYS.length
+const SLOW_TIMEOUT = 12000
 
 interface Props {
   channel:        Channel
@@ -72,25 +76,28 @@ interface Props {
 export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevChannel, onShakaReady }: Props) {
 
   const [state, dispatch] = useReducer(reducer, INITIAL)
-  const videoRef    = useRef<HTMLVideoElement>(null)
-  const onBackRef   = useRef(onBack)
-  const onNextRef   = useRef(onNextChannel)
-  const onPrevRef   = useRef(onPrevChannel)
+  const videoRef     = useRef<HTMLVideoElement>(null)
+  const onBackRef    = useRef(onBack)
+  const onNextRef    = useRef(onNextChannel)
+  const onPrevRef    = useRef(onPrevChannel)
   onBackRef.current  = onBack
   onNextRef.current  = onNextChannel
   onPrevRef.current  = onPrevChannel
 
-  const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const stateRef    = useRef(state)
-  stateRef.current  = state
-
-  const retryCountRef = useRef(0)
+  const osdTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const slowTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stateRef      = useRef(state)
+  stateRef.current    = state
+
+  // ★ inFlightRef — impede callbacks AVPlay de dispararem após channel change/unmount
+  const inFlightRef   = useRef(false)
+  const retryCountRef = useRef(0)
 
   const backend  = selectPlayerBackend(channel.url)
   const isAVPlay = backend === 'avplay'
 
-  // ─ OSD timer
+  // ─── OSD timer ─────────────────────────────────────────────────────────────
   const showOsd = useCallback(() => {
     dispatch({ type: 'SET_OSD', visible: true })
     if (osdTimerRef.current) clearTimeout(osdTimerRef.current)
@@ -103,15 +110,30 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
   }, [])
 
   useEffect(() => {
-    if (state.status === 'playing') { retryCountRef.current = 0; dispatch({ type: 'SET_FOCUS', zone: 'none' }); showOsd() }
+    if (state.status === 'playing') {
+      retryCountRef.current = 0
+      dispatch({ type: 'SET_FOCUS', zone: 'none' })
+      showOsd()
+    }
     return () => { if (osdTimerRef.current) clearTimeout(osdTimerRef.current) }
   }, [state.status])
 
-  // ─── Retry handler ─────────────────────────────────────────────────────
+  // ─── Slow warning 12s ──────────────────────────────────────────────────────
+  const startSlowTimer = useCallback(() => {
+    if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
+    dispatch({ type: 'SLOW_WARNING', show: false })
+    slowTimerRef.current = setTimeout(() => {
+      if (stateRef.current.status === 'loading') {
+        dispatch({ type: 'SLOW_WARNING', show: true })
+      }
+    }, SLOW_TIMEOUT)
+  }, [])
+
+  // ─── Retry handler ─────────────────────────────────────────────────────────
   const attemptRetry = useCallback((errorMsg: string) => {
+    if (!inFlightRef.current) return
     const attempt = retryCountRef.current
     if (attempt >= MAX_RETRIES) {
-      // Esgotou as tentativas — mostra erro final
       dispatch({ type: 'SET_STATUS', status: 'error', error: errorMsg })
       return
     }
@@ -119,19 +141,17 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
     retryCountRef.current = attempt + 1
     console.log(`[PlayerRetry] Attempt ${attempt + 1}/${MAX_RETRIES} in ${delay}ms`)
     dispatch({ type: 'SET_STATUS', status: 'loading' })
+    startSlowTimer()
 
     retryTimerRef.current = setTimeout(() => {
+      if (!inFlightRef.current) return
       if (backend === 'avplay') {
-        if (!isAVPlayAvailable()) {
-          setTimeout(() => dispatch({ type: 'SET_STATUS', status: 'playing' }), 300)
-          return
-        }
-        try { avplayStop() } catch(_) {}
+        if (!isAVPlayAvailable()) { setTimeout(() => dispatch({ type: 'SET_STATUS', status: 'playing' }), 300); return }
+        try { avplayStop() } catch (_) {}
         avplayLoad(
-          channel.url,
-          'av-player',
-          () => dispatch({ type: 'SET_STATUS', status: 'playing' }),
-          (msg) => attemptRetry(msg)
+          channel.url, 'av-player',
+          () => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) },
+          (msg) => { if (inFlightRef.current) attemptRetry(msg) }
         )
       } else {
         const video = videoRef.current
@@ -139,48 +159,91 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         destroyPlayer()
         initPlayer(video)
           .then(async (player: any) => {
+            if (!inFlightRef.current) return
             onShakaReady?.(player)
             await loadStream(channel.url)
-            dispatch({ type: 'SET_STATUS', status: 'playing' })
+            if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' })
           })
-          .catch((e: Error) => attemptRetry(e.message))
+          .catch((e: Error) => { if (inFlightRef.current) attemptRetry(e.message) })
       }
     }, delay)
-  }, [channel.url, backend])
+  }, [channel.url, backend, startSlowTimer])
 
-  // ─ Player lifecycle
-  useEffect(() => {
-    dispatch({ type: 'SET_STATUS', status: 'loading' })
+  // ─── Retry manual (botão na tela de erro) ──────────────────────────────────
+  const retryManual = useCallback(() => {
     retryCountRef.current = 0
+    inFlightRef.current   = true
+    dispatch({ type: 'SET_STATUS', status: 'loading' })
+    startSlowTimer()
+    if (backend === 'avplay') {
+      if (!isAVPlayAvailable()) { setTimeout(() => dispatch({ type: 'SET_STATUS', status: 'playing' }), 300); return }
+      try { avplayStop() } catch (_) {}
+      avplayLoad(
+        channel.url, 'av-player',
+        () => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) },
+        (msg) => { if (inFlightRef.current) attemptRetry(msg) }
+      )
+    } else {
+      const video = videoRef.current
+      if (!video) return
+      destroyPlayer()
+      initPlayer(video)
+        .then(async (player: any) => {
+          if (!inFlightRef.current) return
+          onShakaReady?.(player)
+          await loadStream(channel.url)
+          if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' })
+        })
+        .catch((e: Error) => { if (inFlightRef.current) attemptRetry(e.message) })
+    }
+  }, [channel.url, backend, attemptRetry, startSlowTimer])
+
+  // ─── Player lifecycle ──────────────────────────────────────────────────────
+  useEffect(() => {
+    inFlightRef.current   = true
+    retryCountRef.current = 0
+    dispatch({ type: 'SET_STATUS', status: 'loading' })
+    startSlowTimer()
 
     if (backend === 'avplay') {
       if (!isAVPlayAvailable()) {
-        setTimeout(() => dispatch({ type: 'SET_STATUS', status: 'playing' }), 300)
-        return
+        setTimeout(() => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) }, 300)
+        return () => { inFlightRef.current = false; if (slowTimerRef.current) clearTimeout(slowTimerRef.current) }
       }
       avplayLoad(
-        channel.url,
-        'av-player',
-        () => dispatch({ type: 'SET_STATUS', status: 'playing' }),
-        (msg) => attemptRetry(msg)
+        channel.url, 'av-player',
+        () => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) },
+        (msg) => { if (inFlightRef.current) attemptRetry(msg) }
       )
-      return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); avplayStop() }
+      return () => {
+        inFlightRef.current = false
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+        if (slowTimerRef.current)  clearTimeout(slowTimerRef.current)
+        avplayStop()
+      }
     }
 
-    // Shaka
     const video = videoRef.current
     if (!video) return
     initPlayer(video)
       .then(async (player: any) => {
+        if (!inFlightRef.current) return
         onShakaReady?.(player)
         await loadStream(channel.url)
-        dispatch({ type: 'SET_STATUS', status: 'playing' })
+        if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' })
       })
-      .catch((e: Error) => attemptRetry(e.message))
-    return () => { if (retryTimerRef.current) clearTimeout(retryTimerRef.current); onShakaReady?.(null); destroyPlayer() }
+      .catch((e: Error) => { if (inFlightRef.current) attemptRetry(e.message) })
+
+    return () => {
+      inFlightRef.current = false
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
+      if (slowTimerRef.current)  clearTimeout(slowTimerRef.current)
+      onShakaReady?.(null)
+      destroyPlayer()
+    }
   }, [channel.url, backend])
 
-  // ─ Teclado
+  // ─── Teclado ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const avplay = (window as any).webapis?.avplay
     const tizen  = (window as any).tizen
@@ -245,92 +308,58 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
-  const { status, osdVisible, focusZone, ctrlFocus, debugKeys } = state
+  const { status, osdVisible, focusZone, ctrlFocus, slowWarning, debugKeys } = state
 
   const CTRL_BTNS = [
-    { icon: '⏮', label: '-10s',       idx: CTRL.RW10 },
-    { icon: '⏪', label: 'Retroceder',  idx: CTRL.RW },
+    { icon: '⏮', label: '-10s',      idx: CTRL.RW10 },
+    { icon: '⏪', label: 'Retroceder', idx: CTRL.RW },
     { icon: status === 'paused' ? '▶️' : '⏸️', label: status === 'paused' ? 'Play' : 'Pause', idx: CTRL.PLAY },
-    { icon: '⏩', label: 'Avançar',     idx: CTRL.FF },
-    { icon: '⏭', label: '+10s',        idx: CTRL.FF10 },
-    { icon: '🔊', label: 'Volume',     idx: CTRL.VOL },
-    { icon: '⚙️', label: 'Config',     idx: CTRL.SETTINGS },
+    { icon: '⏩', label: 'Avançar',    idx: CTRL.FF },
+    { icon: '⏭', label: '+10s',       idx: CTRL.FF10 },
+    { icon: '🔊', label: 'Volume',    idx: CTRL.VOL },
+    { icon: '⚙️', label: 'Config',    idx: CTRL.SETTINGS },
   ]
-
-  // ★ ESTRUTURA CORRETA (padrão oficial Samsung TizenTVApps):
-  //
-  //   <div root background=#000>
-  //     <object id="av-player" type="application/avplayer" />   ← layer nativo
-  //     <video id="shaka-player" />                             ← só para Shaka
-  //     <div OSD />                                             ← SIBLING, não filho do object
-  //     <div erro />
-  //     <div debug />
-  //   </div>
-  //
-  // O OSD precisa ser IRMÃO do <object>, não filho nem encapsulado.
-  // O background do root DEVE ser #000 sólido — transparent mata o layer HTML no Tizen.
 
   return (
     <div style={{
       position: 'fixed', inset: 0,
-      background: '#000',           // ★ SÓLIDO — transparent desativa composição HTML no Tizen
+      background: '#000',
       color: '#fff',
       fontFamily: "'Outfit', 'Helvetica Neue', sans-serif",
       overflow: 'hidden',
     }}>
 
-      {/* ★ AVPlay: <object> com id fixo no DOM — o avplayService usa esse elemento
-           como âncora de display. Posicionado absolute 0,0 fullscreen.
-           O OSD ficará como SIBLING logo abaixo, NÃO dentro deste elemento. */}
       {isAVPlay && (
         <object
           id="av-player"
           type="application/avplayer"
-          style={{
-            position: 'absolute',
-            left: 0, top: 0,
-            width: '100%', height: '100%',
-            zIndex: 1,
-          }}
+          style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', zIndex: 1 }}
         />
       )}
 
-      {/* Shaka: <video> normal */}
       {!isAVPlay && (
         <video
           ref={videoRef}
           id="shaka-player"
           autoPlay
           playsInline
-          style={{
-            position: 'absolute',
-            left: 0, top: 0,
-            width: '100%', height: '100%',
-            display: 'block',
-            zIndex: 1,
-          }}
+          style={{ position: 'absolute', left: 0, top: 0, width: '100%', height: '100%', display: 'block', zIndex: 1 }}
         />
       )}
 
-      {/* ★ OSD — SIBLING do <object>, zIndex > 1, visibility em vez de opacity
-           O Tizen colapsa layers com opacity:0 — usar visibility:hidden é seguro */}
+      {/* OSD — visibility em vez de opacity (Tizen colapsa opacity:0) */}
       <div style={{
-        position: 'absolute', inset: 0,
-        zIndex: 10,
+        position: 'absolute', inset: 0, zIndex: 10,
         pointerEvents: 'none',
-        // ★ visibility em vez de opacity — no Tizen, opacity:0 pode colapsar o layer
         visibility: osdVisible ? 'visible' : 'hidden',
         transition: 'visibility 0ms',
       }}>
-
         {/* TOP BAR */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: 160,
           background: 'linear-gradient(to bottom, rgba(0,0,0,0.92) 0%, transparent 100%)',
           display: 'flex', alignItems: 'flex-start',
-          padding: '32px 56px 0', gap: 20,
-          zIndex: 11,
-          // ★ fade via opacity interno — o container usa visibility
+          padding: '32px 56px 0', gap: 20, zIndex: 11,
           opacity: osdVisible ? 1 : 0,
           transition: 'opacity 300ms ease',
         }}>
@@ -341,14 +370,12 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 22,
           }}>←</div>
-
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.2, textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}>
               {channel.name}
             </div>
             <div style={{ fontSize: 18, opacity: 0.55, marginTop: 4 }}>{channel.group}</div>
           </div>
-
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, alignSelf: 'center', flexShrink: 0,
             background: ACCENT, padding: '7px 18px', borderRadius: 6,
@@ -362,30 +389,13 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           </div>
         </div>
 
-        {/* SPINNER loading */}
-        {status === 'loading' && (
-          <div style={{
-            position: 'absolute', inset: 0, zIndex: 12,
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', gap: 20,
-          }}>
-            <div style={{
-              width: 60, height: 60, borderRadius: '50%',
-              border: '4px solid rgba(255,255,255,0.15)',
-              borderTop: `4px solid ${ACCENT}`,
-              animation: 'spin 0.8s linear infinite',
-            }} />
-            <div style={{ fontSize: 20, opacity: 0.7 }}>Conectando...</div>
-          </div>
-        )}
-
         {/* PROGRESS BAR */}
         <div style={{
           position: 'absolute', bottom: 148, left: 56, right: 56,
           height: focusZone === 'controls' ? 8 : 4,
           background: 'rgba(255,255,255,0.2)', borderRadius: 4,
-          transition: 'height 200ms ease-out', zIndex: 11,
-          opacity: osdVisible ? 1 : 0,
+          transition: 'height 200ms ease-out',
+          zIndex: 11, opacity: osdVisible ? 1 : 0,
           transitionProperty: 'height, opacity',
         }}>
           <div style={{ width: '35%', height: '100%', background: ACCENT, borderRadius: 4, position: 'relative' }}>
@@ -399,14 +409,13 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           </div>
         </div>
 
-        {/* BOTTOM ZONE — gradiente + 7 botões */}
+        {/* BOTTOM CONTROLS */}
         <div style={{
           position: 'absolute', bottom: 0, left: 0, right: 0, height: 300,
           background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, transparent 100%)',
           display: 'flex', flexDirection: 'column',
           justifyContent: 'flex-end', padding: '0 56px 40px',
-          zIndex: 11,
-          opacity: osdVisible ? 1 : 0,
+          zIndex: 11, opacity: osdVisible ? 1 : 0,
           transition: 'opacity 300ms ease',
         }}>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 80, alignItems: 'center' }}>
@@ -448,7 +457,35 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         </div>
       </div>
 
-      {/* ERRO — zIndex alto para aparecer sobre tudo */}
+      {/* LOADING — spinner + slow warning */}
+      {status === 'loading' && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 20,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 20,
+          background: 'rgba(0,0,0,0.6)',
+        }}>
+          <div style={{
+            width: 60, height: 60, borderRadius: '50%',
+            border: '4px solid rgba(255,255,255,0.15)',
+            borderTop: `4px solid ${ACCENT}`,
+            animation: 'spin 0.8s linear infinite',
+          }} />
+          <div style={{ fontSize: 20, opacity: 0.7 }}>Conectando...</div>
+          {slowWarning && (
+            <div style={{
+              marginTop: 12, fontSize: 18, color: '#fbbf24',
+              background: 'rgba(251,191,36,0.1)',
+              border: '1px solid rgba(251,191,36,0.3)',
+              borderRadius: 8, padding: '10px 24px', textAlign: 'center',
+            }}>
+              ⏳ Demorando mais que o esperado...
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ERRO — com botão tentar novamente */}
       {status === 'error' && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 20,
@@ -457,21 +494,42 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           background: 'rgba(0,0,0,0.92)', gap: 20,
         }}>
           <div style={{ fontSize: 60 }}>❌</div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: '#ff6b6b' }}>{state.error ?? 'Erro ao carregar stream'}</div>
-          <div style={{ fontSize: 18, opacity: 0.45, maxWidth: 800, textAlign: 'center' }}>{channel.url}</div>
-          <div style={{ fontSize: 16, opacity: 0.5, marginTop: 8 }}>
-            {retryCountRef.current >= MAX_RETRIES 
-              ? `Todas as ${MAX_RETRIES} tentativas falharam` 
-              : `Tentativa ${retryCountRef.current}/${MAX_RETRIES}`
-            }
+          <div style={{ fontSize: 26, fontWeight: 700, color: '#ff6b6b' }}>
+            {state.error ?? 'Erro ao carregar stream'}
           </div>
-          <div style={{ marginTop: 16, background: ACCENT, padding: '14px 48px', borderRadius: 8, fontSize: 20, fontWeight: 700 }}>
+          <div style={{ fontSize: 18, opacity: 0.45, maxWidth: 800, textAlign: 'center' }}>
+            {channel.url}
+          </div>
+          <div style={{ fontSize: 18, opacity: 0.5, marginTop: 4 }}>
+            Todas as {MAX_RETRIES} tentativas falharam
+          </div>
+          <div style={{ display: 'flex', gap: 20, marginTop: 24 }}>
+            <div
+              onClick={retryManual}
+              style={{
+                background: ACCENT, padding: '16px 48px', borderRadius: 8,
+                fontSize: 20, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              🔄 Tentar Novamente
+            </div>
+            <div
+              onClick={() => onBackRef.current()}
+              style={{
+                background: 'rgba(255,255,255,0.12)', padding: '16px 48px', borderRadius: 8,
+                fontSize: 20, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              ← Voltar
+            </div>
+          </div>
+          <div style={{ fontSize: 18, opacity: 0.35, marginTop: 8 }}>
             Pressione BACK para voltar
           </div>
         </div>
       )}
 
-      {/* DEBUG HUD */}
+      {/* DEBUG HUD — apenas quando DEBUG_KEYS = true */}
       {DEBUG_KEYS && (
         <div style={{
           position: 'absolute', top: 24, right: 32, zIndex: 9999,
