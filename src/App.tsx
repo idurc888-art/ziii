@@ -19,9 +19,8 @@ export default function App() {
   const currentChannel   = useChannelsStore(s => s.currentChannel)
   const setCurrentChannel = useChannelsStore(s => s.setCurrentChannel)
 
-  // Restaura tela salva (se veio de um resume do Tizen, pula splash/profiles)
-  const savedScreen = (() => { try { return localStorage.getItem(SCREEN_KEY) as AppScreen | null } catch(_) { return null } })()
-  const [appScreen, setAppScreen] = useState<AppScreen>(savedScreen === 'home' ? 'home' : 'splash')
+  // Força SplashScreen -> ProfileScreen -> HomeScreen em toda inicialização
+  const [appScreen, setAppScreen] = useState<AppScreen>('splash')
 
   // ref para o player Shaka ativo (preenchido pelo PlayerScreen via callback)
   const shakaRef = useRef<any>(null)

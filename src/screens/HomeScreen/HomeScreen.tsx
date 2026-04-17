@@ -438,7 +438,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         }}>
           <HeroBanner
             slides={heroSlides}
-            autoPlayInterval={9000}
+            autoPlayInterval={0}
             focused={focusZone === 'hero'}
             trailerKeysMap={trailerKeysMap}
             trailerFadeDuration={300}
