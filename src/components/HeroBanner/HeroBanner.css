@@ -1,34 +1,65 @@
-/* HeroBanner.css - Estilo Apple TV adaptado para Tizen */
+/* HeroBanner.css - Cinematic 3D transitions + glow pink focus */
 
 .hero-viewport {
   position: relative;
-  width: 100vw;
-  height: 100vh;
-  min-height: 100vh;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   user-select: none;
+  /* Glow border quando banner está focado */
+  border-radius: 16px;
+  transition: box-shadow 400ms cubic-bezier(0.22,1,0.36,1);
 }
 
+.hero-viewport.hero-focused {
+  box-shadow:
+    0 0 0 2px #ff006e,
+    0 0 32px rgba(255,0,110,0.55),
+    0 0 80px rgba(255,0,110,0.25);
+}
+
+/* Perspective container para efeito 3D */
 .hero-track {
   display: flex;
   height: 100%;
   will-change: transform;
+  perspective: 1200px;
+  transform-style: preserve-3d;
 }
 
+/* Slide padrão (inativo) */
 .hero-slide {
-  flex: 0 0 calc(100vw - 120px); /* 60px peek de cada lado */
+  flex: 0 0 calc(100vw - 120px);
   height: 100%;
   position: relative;
   overflow: hidden;
   border-radius: 16px;
   transform-origin: center center;
-  transition: filter 0.5s ease, transform 0.5s ease;
-  filter: brightness(0.5) scale(0.97);
+  /* 3D cinematic: scale + rotateY + translateZ para slides inativos */
+  filter: brightness(0.45);
+  transform: scale(0.93) rotateY(4deg) translateZ(-60px);
+  transition:
+    filter 700ms cubic-bezier(0.22,1,0.36,1),
+    transform 700ms cubic-bezier(0.22,1,0.36,1),
+    box-shadow 700ms cubic-bezier(0.22,1,0.36,1);
 }
 
+/* Slide ativo — reset 3D com zoom sutil Ken Burns */
 .hero-slide.active {
   filter: brightness(1);
-  transform: scale(1);
+  transform: scale(1) rotateY(0deg) translateZ(0px);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.08);
+}
+
+/* Ken Burns no background do slide ativo */
+.hero-slide.active .hero-bg {
+  animation: kenBurns 12s ease-in-out infinite alternate;
+}
+
+@keyframes kenBurns {
+  0%   { transform: scale(1.00) translateX(0px); }
+  50%  { transform: scale(1.06) translateX(-18px); }
+  100% { transform: scale(1.03) translateX(8px); }
 }
 
 .hero-bg {
@@ -44,13 +75,14 @@
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 50%, rgba(0,0,0,0.05) 100%),
-    linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 50%);
+    linear-gradient(to right, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.32) 55%, rgba(0,0,0,0.06) 100%),
+    linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 55%);
   border-radius: inherit;
   pointer-events: none;
   z-index: 1;
 }
 
+/* Conteúdo — entra com slide diferente (translateY + fade, timing mais lento que o track) */
 .hero-content {
   position: absolute;
   bottom: 25%;
@@ -58,14 +90,15 @@
   z-index: 2;
   max-width: 460px;
   opacity: 0;
-  transform: translateX(-24px);
-  transition: opacity 0.65s cubic-bezier(0.22,1,0.36,1) 0.25s,
-              transform 0.65s cubic-bezier(0.22,1,0.36,1) 0.25s;
+  transform: translateY(32px);
+  transition:
+    opacity 800ms cubic-bezier(0.22,1,0.36,1) 350ms,
+    transform 800ms cubic-bezier(0.22,1,0.36,1) 350ms;
 }
 
 .hero-slide.active .hero-content {
   opacity: 1;
-  transform: translateX(0);
+  transform: translateY(0);
 }
 
 .hero-badge {
@@ -102,7 +135,7 @@
 
 .hero-description {
   color: rgba(255,255,255,0.72);
-  font-size: clamp(0.82rem, 1.4vw, 0.95rem);
+  font-size: clamp(0.85rem, 1.4vw, 1rem);
   line-height: 1.55;
   margin-bottom: 22px;
 }
@@ -115,11 +148,11 @@
 .hero-btn {
   padding: 11px 26px;
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 18px;
   font-weight: 600;
   cursor: pointer;
   border: none;
-  transition: transform 0.15s, opacity 0.15s;
+  transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s;
   min-width: 120px;
 }
 
@@ -162,8 +195,9 @@
 }
 
 .hero-dot.active {
-  background: #fff;
+  background: #ff006e;
   width: 38px;
+  box-shadow: 0 0 8px rgba(255,0,110,0.7);
 }
 
 .hero-dot:hover,
@@ -177,14 +211,14 @@
   bottom: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 2px;
   background: rgba(0,0,0,0.3);
   z-index: 19;
 }
 
 .hero-progress {
   height: 100%;
-  background: rgba(255,255,255,0.5);
+  background: linear-gradient(to right, #ff006e, rgba(255,0,110,0.5));
   border-radius: 0 2px 2px 0;
 }
 
@@ -219,8 +253,7 @@
 
 /* Estado vazio */
 .hero-empty {
-  height: 100vh;
-  min-height: 100vh;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -229,23 +262,6 @@
   background: rgba(0,0,0,0.1);
   border-radius: 16px;
   margin: 0 60px;
-}
-
-/* Responsividade para TV */
-@media (max-width: 1920px) {
-  .hero-viewport {
-    height: 100vh;
-  }
-}
-
-@media (max-width: 1280px) {
-  .hero-viewport {
-    height: 50vh;
-  }
-  
-  .hero-slide {
-    flex: 0 0 calc(100vw - 80px); /* Peek menor em telas menores */
-  }
 }
 
 /* Foco para navegação D-pad */
