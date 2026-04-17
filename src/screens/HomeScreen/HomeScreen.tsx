@@ -33,8 +33,7 @@ const GLOW   = 'rgba(255, 0, 110, 0.4)'
 const BG     = '#000000'
 const TEXT_MUTED = '#a0a0a0'
 
-/** Altura do banner quando visível */
-const HERO_H = '87vh'
+
 
 const SIDEBAR_ICONS = [
   { 
@@ -391,16 +390,18 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       {/* ── SIDEBAR (Minimalista Enterprise) — Sobreposição Absoluta ─── */}
       <div style={{
         position: 'absolute',
-        top: focusZone === 'sidebar' ? 0 : 32,
-        left: focusZone === 'sidebar' ? 0 : 32,
+        top: focusZone === 'sidebar' ? 0 : 12,
+        left: focusZone === 'sidebar' ? 0 : 12,
         bottom: focusZone === 'sidebar' ? 0 : 'auto',
-        width: focusZone === 'sidebar' ? 320 : 54,
-        height: focusZone === 'sidebar' ? '100%' : 54,
-        borderRadius: focusZone === 'sidebar' ? 0 : 27,
-        background: focusZone === 'sidebar' ? 'rgba(10,10,10,0.95)' : 'rgba(255,255,255,0.08)',
+        width: focusZone === 'sidebar' ? 320 : 44,
+        height: focusZone === 'sidebar' ? '100%' : 44,
+        borderRadius: focusZone === 'sidebar' ? 0 : 22,
+        background: focusZone === 'sidebar' ? 'rgba(10,10,10,0.97)' : 'rgba(255,0,110,0.15)',
         backdropFilter: 'blur(20px)',
-        borderRight: focusZone === 'sidebar' ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(255,255,255,0.15)',
-        boxShadow: focusZone === 'sidebar' ? '0 0 60px rgba(255,0,110,0.45)' : '0 4px 12px rgba(0,0,0,0.5)',
+        border: focusZone === 'sidebar' ? '1px solid rgba(255,0,110,0.3)' : '1px solid rgba(255,0,110,0.4)',
+        boxShadow: focusZone === 'sidebar'
+          ? '0 0 60px rgba(255,0,110,0.5), inset 0 0 30px rgba(255,0,110,0.05)'
+          : '0 0 16px rgba(255,0,110,0.35), 0 0 4px rgba(255,0,110,0.6)',
         zIndex: 999,
         display: 'flex', flexDirection: 'column',
         alignItems: focusZone === 'sidebar' ? 'flex-start' : 'center',
@@ -480,7 +481,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       <div style={{
         flexShrink: 0,
         position: 'relative', zIndex: 90,
-        height: 72, display: 'flex', alignItems: 'center', padding: '0 80px',
+        height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 80px',
         background: focusZone === 'hero'
           ? 'rgba(0,0,0,0.1)'
           : isHeroVisible
@@ -490,12 +492,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         boxShadow: focusZone === 'topbar' ? '0 4px 24px rgba(255,0,110,0.4)' : 'none',
         transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
       }}>
-        <div style={{
-          fontSize: 18, fontWeight: 900, letterSpacing: 1,
-          textTransform: 'lowercase', marginRight: 40,
-        }}>
-          o melhor · <span style={{ color: ACCENT }}>ziiiTV!</span>
-        </div>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           {TOPBAR_LINKS.map((link, i) => {
             const active        = focusZone === 'topbar' && topbarIdx === i
@@ -528,12 +524,11 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         {/* BANNER — Banner Principal e Background de Vídeo Global */}
         <div style={{
           position: 'absolute',
-          top: 0, left: 0, right: 0,
-          height: focusZone === 'hero' ? '100%' : (focusZone === 'content' ? '100%' : HERO_H),
+          top: 0, left: 0, right: 0, bottom: 0,
           overflow: 'hidden',
           transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
           zIndex: focusZone === 'content' ? 0 : 10,
-          borderRadius: focusZone === 'hero' ? 0 : 16,
+          opacity: focusZone === 'content' ? 0 : 1,
           border: focusZone === 'hero' ? '2px solid #ff006e' : '2px solid transparent',
           boxShadow: focusZone === 'hero' ? '0 0 32px rgba(255,0,110,0.55), 0 0 80px rgba(255,0,110,0.25)' : 'none',
         }}>
@@ -556,7 +551,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           />
         </div>
 
-        {/* ROWS — scroll próprio, por cima do background de vídeo quando em content mode */}
+        {/* ROWS — scroll próprio, por cima do background */}
         <div
           ref={rowsWrapRef}
           style={{
@@ -564,10 +559,11 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             top: 0, left: 0, right: 0, bottom: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
-            paddingTop: focusZone === 'content' ? '8px' : (focusZone === 'hero' ? '100%' : HERO_H),
+            paddingTop: focusZone === 'hero' ? '100vh' : '8px',
             transition: 'padding-top 520ms cubic-bezier(0.25,1,0.5,1)',
             scrollBehavior: 'smooth',
             zIndex: 15,
+            background: focusZone === 'content' ? BG : 'transparent',
           }}
         >
           {rows.map((row, rowIdx) => (
