@@ -12,7 +12,7 @@ import {
 import { recordPlay } from '../../services/historyService'
 import { useHeroTrailer } from '../../hooks/useHeroTrailer'
 import { HeroBanner, mockHeroSlides } from '../../components/HeroBanner'
-import { TopMoviesBanner, mockTopMovies } from '../../components/TopMoviesBanner'
+// import { TopMoviesBanner, mockTopMovies } from '../../components/TopMoviesBanner'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Channel {
@@ -67,8 +67,8 @@ const CATEGORY_ICONS: Record<string, { emoji: string; color: string }> = {
 
 // ─── Tizen Focus Constants ───────────────────────────────────────────────────
 const FOCUS_SCALE = 1.05;
-const FOCUS_DURATION = 160;
-const FOCUS_EASING = 'ease-out';
+const FOCUS_DURATION = 350;
+const FOCUS_EASING = 'cubic-bezier(0.25, 1, 0.5, 1)';
 const UNFOCUS_OPACITY = 0.88;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -312,8 +312,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     return () => document.removeEventListener('keydown', onKey)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const ROW_HEIGHT = 320
-  const contentOffset = focusZone === 'content' ? -(contentRow * ROW_HEIGHT) : 0
+
 
   // ═══════════════════════════════════════════════════════════════════════
   // RENDER
@@ -365,18 +364,17 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           </div>
         </div>
 
-        {/* HERO BANNER Apple TV Style */}
+        {/* HERO BANNER Netflix Style */}
         <div style={{
           position: 'relative',
           width: '100%',
-          height: focusZone === 'content' ? '200px' : '100vh',
-          minHeight: focusZone === 'content' ? '200px' : '100vh',
+          height: '80vh',
+          minHeight: '80vh',
           overflow: 'hidden',
-          transition: 'height 500ms cubic-bezier(0.4, 0, 0.2, 1)',
         }}>
           <HeroBanner
             slides={mockHeroSlides}
-            autoPlayInterval={7000}
+            autoPlayInterval={0}
             onSelect={(slide) => {
               console.log('HeroBanner: selecionado', slide.title);
               // Aqui você pode implementar a lógica para reproduzir o conteúdo
@@ -414,8 +412,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           position: 'relative',
           top: 0,
           width: '100%',
-          transform: `translateY(${contentOffset}px)`,
-          transition: 'transform 500ms cubic-bezier(0.4,0,0.2,1)',
         }}>
           {rows.map((row, rowIdx) => (
             <div ref={el => { rowRefs.current[rowIdx] = el }} key={rowIdx} style={{ padding: '24px 0', overflow: 'visible' }}>
@@ -465,8 +461,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   })}
                 </div>
               ) : (() => {
-                const CARD_W = 220;
-                const CARD_H = 330;
+                const CARD_W = 264;
+                const CARD_H = 396;
                 const GAP = 20;
                 const STEP = CARD_W + GAP;
                 
@@ -475,7 +471,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                 const isVirtualRow = Math.abs(contentRow - rowIdx) <= 2
 
                 if (!isVirtualRow) {
-                  return <div style={{ height: 380 }} />
+                  return <div style={{ height: 440 }} />
                 }
 
                 // Cálculo da Câmera (Foco Ancorado na Esquerda)
@@ -512,7 +508,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                     }
 
                     const isFocused = isRowFocused && ci === focusedIndex;
-                    const expandedW = 580;
+                    const expandedW = 696;
                     const currentW = isFocused ? expandedW : CARD_W;
                     
                     return (
@@ -544,7 +540,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                         {/* Expansion Area (Backdrop + Fallback Title) */}
                         <div style={{
                           position: 'absolute', left: CARD_W - 8, top: 0,
-                          width: 368, height: '100%',
+                          width: expandedW - CARD_W + 8, height: '100%',
                           background: '#111',
                           border: `3px solid ${ACCENT}`, borderLeft: 'none',
                           borderRadius: '0 8px 8px 0',
