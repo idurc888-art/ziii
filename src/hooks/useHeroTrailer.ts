@@ -125,7 +125,7 @@ export function useHeroTrailer(
   }, [isHeroVisible, focusZone]);
 
   const getIframeUrl = (key: string) => key
-    ? `https://www.youtube.com/embed/${key}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1&loop=1&playlist=${key}&origin=https://localhost`
+    ? `https://www.youtube.com/embed/${key}?autoplay=1&mute=1&controls=0&showinfo=0&rel=0&modestbranding=1&playsinline=1&loop=1&playlist=${key}&enablejsapi=1`
     : '';
 
   return {

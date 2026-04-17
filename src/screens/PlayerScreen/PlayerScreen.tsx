@@ -94,7 +94,8 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
   const inFlightRef   = useRef(false)
   const retryCountRef = useRef(0)
 
-  const backend  = selectPlayerBackend(channel.url)
+  const streamUrl = channel.activeStream.url
+  const backend  = selectPlayerBackend(streamUrl)
   const isAVPlay = backend === 'avplay'
 
   // ─── OSD timer ─────────────────────────────────────────────────────────────
@@ -149,7 +150,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         if (!isAVPlayAvailable()) { setTimeout(() => dispatch({ type: 'SET_STATUS', status: 'playing' }), 300); return }
         try { avplayStop() } catch (_) {}
         avplayLoad(
-          channel.url, 'av-player',
+          streamUrl, 'av-player',
           () => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) },
           (msg) => { if (inFlightRef.current) attemptRetry(msg) }
         )
@@ -161,13 +162,13 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           .then(async (player: any) => {
             if (!inFlightRef.current) return
             onShakaReady?.(player)
-            await loadStream(channel.url)
+            await loadStream(streamUrl)
             if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' })
           })
           .catch((e: Error) => { if (inFlightRef.current) attemptRetry(e.message) })
       }
     }, delay)
-  }, [channel.url, backend, startSlowTimer])
+  }, [streamUrl, backend, startSlowTimer])
 
   // ─── Retry manual (botão na tela de erro) ──────────────────────────────────
   const retryManual = useCallback(() => {
@@ -179,7 +180,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
       if (!isAVPlayAvailable()) { setTimeout(() => dispatch({ type: 'SET_STATUS', status: 'playing' }), 300); return }
       try { avplayStop() } catch (_) {}
       avplayLoad(
-        channel.url, 'av-player',
+        streamUrl, 'av-player',
         () => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) },
         (msg) => { if (inFlightRef.current) attemptRetry(msg) }
       )
@@ -191,12 +192,12 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         .then(async (player: any) => {
           if (!inFlightRef.current) return
           onShakaReady?.(player)
-          await loadStream(channel.url)
+          await loadStream(streamUrl)
           if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' })
         })
         .catch((e: Error) => { if (inFlightRef.current) attemptRetry(e.message) })
     }
-  }, [channel.url, backend, attemptRetry, startSlowTimer])
+  }, [streamUrl, backend, attemptRetry, startSlowTimer])
 
   // ─── Player lifecycle ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -211,7 +212,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         return () => { inFlightRef.current = false; if (slowTimerRef.current) clearTimeout(slowTimerRef.current) }
       }
       avplayLoad(
-        channel.url, 'av-player',
+        streamUrl, 'av-player',
         () => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) },
         (msg) => { if (inFlightRef.current) attemptRetry(msg) }
       )
@@ -229,7 +230,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
       .then(async (player: any) => {
         if (!inFlightRef.current) return
         onShakaReady?.(player)
-        await loadStream(channel.url)
+        await loadStream(streamUrl)
         if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' })
       })
       .catch((e: Error) => { if (inFlightRef.current) attemptRetry(e.message) })
@@ -241,7 +242,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
       onShakaReady?.(null)
       destroyPlayer()
     }
-  }, [channel.url, backend])
+  }, [streamUrl, backend])
 
   // ─── Teclado ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -498,7 +499,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
             {state.error ?? 'Erro ao carregar stream'}
           </div>
           <div style={{ fontSize: 18, opacity: 0.45, maxWidth: 800, textAlign: 'center' }}>
-            {channel.url}
+            {streamUrl}
           </div>
           <div style={{ fontSize: 18, opacity: 0.5, marginTop: 4 }}>
             Todas as {MAX_RETRIES} tentativas falharam

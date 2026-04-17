@@ -1,5 +1,6 @@
 import { parseM3U } from '@iptv/playlist'
-import type { Channel } from '../types/channel'
+import type { Channel, RawChannel } from '../types/channel'
+import { normalizeStreams } from './streamNormalizer'
 import * as db from './dbClient'
 
 const DEBUG = false // Feature flag para logs detalhados
@@ -41,20 +42,21 @@ async function loadRemote(url: string, id: number): Promise<Record<string, Chann
   const text = await res.text()
   const playlist = parseM3U(text)
   
+  const rawChannels: RawChannel[] = playlist.channels.map(item => ({
+    name: item.name ?? '',
+    url: item.url ?? '',
+    logo: item.tvgLogo ?? '',
+    group: item.groupTitle ?? 'Sem categoria'
+  }))
+
+  const channels = normalizeStreams(rawChannels)
+
   const groups: Record<string, Channel[]> = {}
-  let count = 0
-  
-  for (const item of playlist.channels) {
-    const group = item.groupTitle ?? 'Sem categoria'
-    const ch: Channel = {
-      name: item.name ?? '',
-      url: item.url ?? '',
-      logo: item.tvgLogo ?? '',
-      group,
-    }
-    if (!groups[group]) groups[group] = []
-    groups[group].push(ch)
-    count++
+  let count = channels.length
+
+  for (const ch of channels) {
+    if (!groups[ch.group]) groups[ch.group] = []
+    groups[ch.group].push(ch)
   }
   
   if (DEBUG) console.log(`[Playlist #${id}] Parse completo: ${Object.keys(groups).length} grupos, ${count} canais`)

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { UICategory } from '../../services/categoryMapper'
 import type { ContentRow, ScreenContent } from '../../services/contentSelector'
 import type { TMDBResult } from '../../services/tmdbService'
@@ -10,16 +10,11 @@ import {
   buildTvContent
 } from '../../services/contentSelector'
 import { recordPlay } from '../../services/historyService'
-import { useHeroTrailer } from '../../hooks/useHeroTrailer'
 import { HeroBanner, mockHeroSlides, type HeroSlide } from '../../components/HeroBanner'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-interface Channel {
-  name: string
-  url: string
-  logo: string
-  group: string
-}
+import type { Channel } from '../../types/channel'
+import { QUALITY_BADGE_COLOR } from '../../types/channel'
 
 interface Props {
   groups: Record<UICategory, Channel[]>
@@ -176,16 +171,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       }
     }
   }, [debouncedPreview, contentRow, rows, liveTmdbData])
-
-  // ─── Hero Trailer Prefetch ────────────────────────────────────────────
-  const heroPrefetchItems = useMemo(() => {
-    return heroSlides.filter(s => s.tmdbId).map(s => ({
-      tmdbId: s.tmdbId,
-      mediaType: s.type === 'movie' ? 'movie' : 'tv',
-    }) as TMDBResult)
-  }, [heroSlides])
-
-  const { trailerKeysMap } = useHeroTrailer(heroPrefetchItems, null, { fadeDuration: 300 })
 
   // ─── Refs ─────────────────────────────────────────────────────────────
   const focusZoneRef   = useRef(focusZone)
@@ -440,8 +425,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             slides={heroSlides}
             autoPlayInterval={0}
             focused={focusZone === 'hero'}
-            trailerKeysMap={trailerKeysMap}
-            trailerFadeDuration={300}
             onSelect={(slide) => {
               if (slide.type === 'live') {
                 const channel = Object.values(groups).flat().find(ch =>
@@ -574,21 +557,52 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                               borderRadius: 8, zIndex: 3, overflow: 'hidden',
                             }}>
                               {(() => {
-                                const t   = row.tmdb?.get(ch.name)
-                                const posterSrc = t?.poster || ch.logo
+                                const t   = row.tmdb?.get(ch.name) || ch.tmdb
+                                const posterSrc = t?.poster || ch.logo || ch.activeStream?.url || ''
                                 const backdropSrc = t?.backdrop ? `https://image.tmdb.org/t/p/w780${t.backdrop}` : posterSrc
+                                const quality = ch.activeStream?.quality
+                                const badgeColor = quality && quality !== 'UNKNOWN' ? QUALITY_BADGE_COLOR[quality] : null
+                                const textColor = quality === 'HD' ? '#fff' : '#000'
                                 return (
                                   <>
+                                    {/* Backdrop — estático, sem animação */}
                                     <img src={backdropSrc} style={{
                                       position: 'absolute', left: 0, top: 0,
                                       width: 840, height: 475, objectFit: 'cover', zIndex: 1
                                     }} />
+                                    {/* Poster — estático, passa por trás do card maior */}
                                     <img src={posterSrc} style={{
                                       position: 'absolute', left: 0, top: 0,
                                       width: 317, height: 475, objectFit: 'cover', zIndex: 2,
                                       opacity: isFocused ? 0 : 1,
-                                      transition: `opacity 150ms ease-out`
                                     }} />
+                                    {/* Badge de Qualidade */}
+                                    {badgeColor && (
+                                      <div style={{
+                                        position: 'absolute', top: 8, right: 8,
+                                        background: badgeColor,
+                                        color: textColor,
+                                        fontSize: 11, fontWeight: 800,
+                                        padding: '2px 7px', borderRadius: 4,
+                                        letterSpacing: 0.8, zIndex: 6,
+                                        boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
+                                      }}>
+                                        {quality}
+                                      </div>
+                                    )}
+                                    {/* Indicador de múltiplas qualidades */}
+                                    {ch.variantCount > 1 && (
+                                      <div style={{
+                                        position: 'absolute', bottom: 8, right: 8,
+                                        background: 'rgba(0,0,0,0.65)',
+                                        color: '#ccc',
+                                        fontSize: 10, fontWeight: 600,
+                                        padding: '2px 6px', borderRadius: 4,
+                                        zIndex: 6, letterSpacing: 0.4,
+                                      }}>
+                                        {ch.variantCount} opções
+                                      </div>
+                                    )}
                                   </>
                                 )
                               })()}

@@ -6,6 +6,7 @@ import PlayerScreen from './screens/PlayerScreen/PlayerScreen'
 import SplashScreen from './screens/SplashScreen/SplashScreen'
 import ProfileScreen from './screens/ProfileScreen/ProfileScreen'
 import HomeScreen from './screens/HomeScreen/HomeScreen'
+import { ContentCatalog } from './services/contentCatalog'
 
 const TEST_M3U_URL = 'http://cdc55.cc/get.php?username=0357028521&password=82740&type=m3u_plus&output=ts'
 
@@ -30,6 +31,14 @@ export default function App() {
     const lastUrl = localStorage.getItem('ziiiTV_lastUrl') || TEST_M3U_URL
     loadFromUrl(lastUrl)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Inicializar Catálogo Enterprise ────────────────────────────────────────
+  useEffect(() => {
+    if (Object.keys(normalizedGroups).length > 0) {
+      ContentCatalog.init(normalizedGroups)
+      ContentCatalog.warmup()
+    }
+  }, [normalizedGroups])
 
   // ─── Samsung: pause/resume ao sair/voltar para o app ─────────────────────
   useEffect(() => {

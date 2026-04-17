@@ -1,11 +1,7 @@
-export interface Channel {
-  name: string
-  url: string
-  logo: string
-  group: string
-}
+import type { Channel, RawChannel } from '../types/channel'
+import { normalizeStreams } from '../services/streamNormalizer'
 
-export const mockChannels: Channel[] = [
+export const mockRawChannels: RawChannel[] = [
   { name: 'Cinema HD', url: 'http://fake/1', logo: '', group: 'Filmes' },
   { name: 'Action Movies', url: 'http://fake/2', logo: '', group: 'Filmes' },
   { name: 'Drama Plus', url: 'http://fake/3', logo: '', group: 'Filmes' },
@@ -29,6 +25,8 @@ export const mockChannels: Channel[] = [
   { name: 'NFL Network', url: 'http://fake/19', logo: '', group: 'Esportes' },
   { name: 'Combate', url: 'http://fake/20', logo: '', group: 'Esportes' },
 ]
+
+export const mockChannels: Channel[] = normalizeStreams(mockRawChannels)
 
 export const mockGroups: Record<string, Channel[]> = mockChannels.reduce(
   (acc, ch) => ({ ...acc, [ch.group]: [...(acc[ch.group] || []), ch] }),

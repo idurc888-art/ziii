@@ -1,5 +1,6 @@
 import { parseM3U } from '@iptv/playlist'
-import type { Channel } from '../types/channel'
+import type { Channel, RawChannel } from '../types/channel'
+import { normalizeStreams } from '../services/streamNormalizer'
 
 type InMessage = { type: 'LOAD'; url: string }
 type OutMessage =
@@ -14,17 +15,20 @@ self.onmessage = async (e: MessageEvent<InMessage>) => {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const playlist = parseM3U(await res.text())
 
+    // Converte para RawChannel[] e deduplica com normalizeStreams
+    const rawChannels: RawChannel[] = playlist.channels.map(item => ({
+      name: item.name ?? '',
+      url: item.url ?? '',
+      logo: item.tvgLogo ?? '',
+      group: item.groupTitle ?? 'Sem categoria',
+    }))
+
+    const channels = normalizeStreams(rawChannels)
+
     const groups: Record<string, Channel[]> = {}
-    for (const item of playlist.channels) {
-      const group = item.groupTitle ?? 'Sem categoria'
-      const ch: Channel = {
-        name: item.name ?? '',
-        url: item.url ?? '',
-        logo: item.tvgLogo ?? '',
-        group,
-      }
-      if (!groups[group]) groups[group] = []
-      groups[group].push(ch)
+    for (const ch of channels) {
+      if (!groups[ch.group]) groups[ch.group] = []
+      groups[ch.group].push(ch)
     }
 
     self.postMessage({ type: 'SUCCESS', groups } satisfies OutMessage)
