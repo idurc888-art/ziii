@@ -3,6 +3,7 @@ import type { Channel } from '../types/channel'
 import type { TMDBResult } from './tmdbService'
 import { ContentCatalog } from './contentCatalog'
 import type { UICategory } from './categoryMapper'
+import { getMostWatched } from './historyService'
 
 export type RowType = 'wide' | 'simple' | 'portrait' | 'grid'
 
@@ -38,42 +39,63 @@ function buildRows(rowsData: Partial<ContentRow>[]): ContentRow[] {
 export async function buildHomeContent(_groups: NormalizedGroups): Promise<ScreenContent> {
   ContentCatalog.resetUsed()
 
-  // Hero: mix filmes + s\u00e9ries mais bem avaliados
+  // ─── Extrair histórico real ───
+  const allChannelsMap = new Map<string, Channel>()
+  for (const list of Object.values(_groups)) {
+    for (const ch of list) allChannelsMap.set(ch.name, ch)
+  }
+
+  const historyEntries = getMostWatched(10)
+  const historyChannels = historyEntries
+    .map(h => allChannelsMap.get(h.name)!)
+    .filter(Boolean)
+
+  // Fallback se histórico for vazio ou < 10
+  const fallbackNeeded = 10 - historyChannels.length
+  let mostWatchedPool = historyChannels
+  if (fallbackNeeded > 0) {
+    mostWatchedPool = [
+      ...historyChannels,
+      ...ContentCatalog.pickMix(['filmes', 'series', 'abertos'], fallbackNeeded, 50)
+    ]
+  }
+  // Marca o pool como usado para o dedup
+  mostWatchedPool.forEach(ch => ContentCatalog.pickBest('filmes', 0, { excludeLocal: new Set([ch.id]), allowReuse: false })) 
+  // ↑ hack seguro para adicionar ao usedIds indiretamente no ContentCatalog.
+  // Melhor abordagem explícita se pudéssemos, mas no ContentCatalog o pickMix/pickBest já o faz.
+
+  // Hero: mix filmes + séries mais bem avaliados
   const heroChannels = [
-    { id: 'ziii', name: 'ziiiTV', url: '', logo: '', group: 'Ziii', streams: [], activeStream: { url: '', quality: 'UNKNOWN', label: 'Padr\u00e3o' }, variantCount: 1 } as unknown as Channel,
+    { id: 'ziii', name: 'ziiiTV', url: '', logo: '', group: 'Ziii', streams: [], activeStream: { url: '', quality: 'UNKNOWN', label: 'Padrão' }, variantCount: 1 } as unknown as Channel,
     ...ContentCatalog.pickMix(['filmes', 'series'], 4, 70)
   ]
 
   const rows = buildRows([
-    // Linha 1 — Mais Assistidos: filmes + séries + canais
+    // Linha 1 — Mais Assistidos: Histórico real + séries/filmes complementares (mínimo 10)
     {
       type: 'wide',
-      title: '\U0001f525 Mais ',
-      titleAccent: 'Assistidos',
-      channels: [
-        ...ContentCatalog.pickBest('filmes', 4, { minScore: 60 }),
-        ...ContentCatalog.pickBest('series', 3, { minScore: 60 }),
-        ...ContentCatalog.getPool('abertos').slice(0, 3),
-      ]
+      title: '🔥 O Que Você ',
+      titleAccent: 'Mais Assiste',
+      channels: mostWatchedPool
     },
-    // Linha 2 — Top 10 Filmes
+    // Linha 2 — Top 10 Filmes (Buscando 20 pra garantir fallback robusto)
     {
       type: 'portrait',
-      title: '\U0001f3ac Top 10 ',
+      title: '🎬 Top 10 ',
       titleAccent: 'Filmes',
-      channels: ContentCatalog.pickBest('filmes', 10, { minScore: 50 })
+      channels: ContentCatalog.pickBest('filmes', 20, { minScore: 50 })
     },
-    // Linha 3 — Top 10 Séries
+    // Linha 3 — Top 10 Séries (Buscando 20 pra garantir fallback robusto)
     {
       type: 'portrait',
-      title: '\U0001f4fa Top 10 ',
+      title: '📺 Top 10 ',
       titleAccent: 'Séries',
-      channels: ContentCatalog.pickBest('series', 10, { minScore: 50 })
+      channels: ContentCatalog.pickBest('series', 20, { minScore: 50 })
     },
     // Linha 4 — Top 10 Canais (esportes + notícias + docs)
     {
       type: 'wide',
-      title: '\u26a1 Top 10 ',
+      title: '⚡ Top 10 ',
       titleAccent: 'Canais',
       channels: [
         ...ContentCatalog.getPool('esportes').slice(0, 4),
@@ -84,14 +106,14 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
     // Linha 5 — Jogos do Dia (canais de esportes ao vivo)
     {
       type: 'wide',
-      title: '\u26bd Jogos ',
+      title: '⚽ Jogos ',
       titleAccent: 'do Dia',
       channels: ContentCatalog.getPool('esportes').slice(0, 10)
     },
     // Linha 6 — Top 10 YouTube
     {
       type: 'portrait',
-      title: '\u25b6\ufe0f Top 10 ',
+      title: '▶️ Top 10 ',
       titleAccent: 'YouTube',
       channels: ContentCatalog.getPool('infantil').slice(0, 10)
     },

@@ -70,9 +70,9 @@ class ContentCatalogClass {
   private async _doWarmup(): Promise<void> {
     console.log('[ContentCatalog] Iniciando warmup TMDB...')
 
-    // Fase 1: top 50 filmes + top 50 séries (mais urgentes)
-    const filmes  = this.catalog.get('filmes')?.slice(0, 50) ?? []
-    const series  = this.catalog.get('series')?.slice(0, 50) ?? []
+    // Fase 1: top 100 filmes + top 100 séries (garantir dados na home)
+    const filmes  = this.catalog.get('filmes')?.slice(0, 100) ?? []
+    const series  = this.catalog.get('series')?.slice(0, 100) ?? []
 
     await Promise.all([
       this._enrichCategory('filmes', filmes),
