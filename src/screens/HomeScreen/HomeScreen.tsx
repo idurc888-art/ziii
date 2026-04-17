@@ -231,8 +231,13 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     if (row && rowsWrapRef.current) {
       // Scroll suave só dentro do wrapper de rows
       const wrapper = rowsWrapRef.current
-      const rowTop  = row.offsetTop
-      wrapper.scrollTo({ top: rowTop - 16, behavior: 'smooth' })
+      if (contentRow === 0) {
+        // A primeira linha nunca precisa de offset, e evita bug por conta do paddingTop animando
+        wrapper.scrollTo({ top: 0, behavior: 'smooth' })
+      } else {
+        const rowTop  = row.offsetTop
+        wrapper.scrollTo({ top: rowTop - 16, behavior: 'smooth' })
+      }
     }
   }, [contentRow, focusZone])
 
