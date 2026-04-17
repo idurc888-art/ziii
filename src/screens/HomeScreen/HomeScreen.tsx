@@ -12,7 +12,6 @@ import {
 import { recordPlay } from '../../services/historyService'
 import { useHeroTrailer } from '../../hooks/useHeroTrailer'
 import { HeroBanner, mockHeroSlides } from '../../components/HeroBanner'
-// // import { TopMoviesBanner, mockTopMovies } from '../../components/TopMoviesBanner' // disabled
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface Channel {
@@ -135,7 +134,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     ? rows[contentRow].channels[contentCols[contentRow]] || null
     : null
 
-  // ─── Debounce navigation for heavy hero data ──────────────────────────
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedPreview(previewChannel)
@@ -155,25 +153,22 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   }, [debouncedPreview, contentRow, rows, liveTmdbData])
 
   // ─── Hero Trailer System ─────────────────────────────────────────────
-  // Determinar qual item está em destaque no hero
-  // Por enquanto, usamos o primeiro slide do HeroBanner
   const currentHeroItem: TMDBResult | null = mockHeroSlides[0] ? {
-    tmdbId: 1, // Mock ID - na implementação real viria do TMDB
+    tmdbId: 1,
     title: mockHeroSlides[0].title,
     poster: mockHeroSlides[0].backgroundImage,
     backdrop: mockHeroSlides[0].backgroundImage,
     overview: mockHeroSlides[0].description,
-    rating: 8.0, // Mock rating
-    year: '2024', // Mock year
-    mediaType: 'movie', // Mock type
-    trailerKey: '' // Será preenchido pelo hook
+    rating: 8.0,
+    year: '2024',
+    mediaType: 'movie',
+    trailerKey: ''
   } : null;
 
-  // Hook para controlar autoplay de trailer
   useHeroTrailer(currentHeroItem, {
-    idleDelay: 2500, // 2.5 segundos
-    fadeDuration: 800, // 0.8 segundos para fade
-    isHeroVisible: focusZone !== 'content', // Hero visível quando não está no content
+    idleDelay: 2500,
+    fadeDuration: 800,
+    isHeroVisible: focusZone !== 'content',
     focusZone: focusZone
   });
 
@@ -203,7 +198,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const viewportRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (focusZone !== 'content') {
-      // Quando voltámos para o hero, rola de volta ao topo
       if (viewportRef.current) {
         viewportRef.current.scrollTo({ top: 0, behavior: 'smooth' })
       }
@@ -306,7 +300,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       if (zone === 'hero') {
         if (isUp) { setFocusZone('topbar'); setHeroState('default') }
         else if (isDown) { setFocusZone('content'); setHeroState('collapsed'); setContentRow(0) }
-        // As setas esquerda/direita são tratadas pelo próprio HeroBanner
         return
       }
 
@@ -349,15 +342,16 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       {/* VIEWPORT - scroll interno */}
       <div ref={viewportRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'auto', scrollBehavior: 'smooth' }}>
 
-        {/* TOPBAR — SEMPRE visível como Netflix */}
+        {/* TOPBAR */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, zIndex: 90,
           height: 72, display: 'flex', alignItems: 'center', padding: '0 80px',
           background: 'linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0.4), transparent)',
           flexShrink: 0,
         }}>
+          {/* ★ logo: era 0.85rem (~13.6px) → agora 18px */}
           <div style={{
-            fontSize: '0.85rem', fontWeight: 900, letterSpacing: 1,
+            fontSize: 18, fontWeight: 900, letterSpacing: 1,
             textTransform: 'lowercase', marginRight: 40,
           }}>
             o melhor · <span style={{ color: ACCENT }}>ziiiTV!</span>
@@ -368,7 +362,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
               const isCurrentView = activeView === link.view
               return (
                 <div key={i} style={{
-                  fontSize: '1.1rem', fontWeight: 700, textTransform: 'lowercase',
+                  fontSize: 18, fontWeight: 700, textTransform: 'lowercase',
                   color: active ? '#fff' : (isCurrentView ? ACCENT : 'rgba(255,255,255,0.35)'),
                   padding: '6px 14px', borderRadius: 20,
                   background: active ? 'rgba(255,0,110,0.12)' : 'transparent',
@@ -382,7 +376,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           </div>
         </div>
 
-        {/* HERO BANNER Netflix Style - oculto quando navega nos cards */}
+        {/* HERO BANNER */}
         <div style={{
           position: 'relative',
           width: '100%',
@@ -395,43 +389,19 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             slides={mockHeroSlides}
             autoPlayInterval={0}
             onSelect={(slide) => {
-              console.log('HeroBanner: selecionado', slide.title);
-              // Aqui você pode implementar a lógica para reproduzir o conteúdo
               if (slide.type === 'live') {
-                // Buscar canal correspondente
                 const channel = Object.values(groups).flat().find(ch => 
                   ch.name.includes(slide.title) || slide.title.includes(ch.name)
                 );
-                if (channel) {
-                  onPlay(channel);
-                }
+                if (channel) onPlay(channel);
               }
             }}
-            onAddToList={(slide) => {
-              console.log('HeroBanner: adicionar à lista', slide.title);
-              // Implementar lógica para adicionar aos favoritos
-            }}
+            onAddToList={(_slide) => {}}
           />
         </div>
 
-        {/* TOP MOVIES BANNER - Comentado pois estava quebrando o layout ao deslizar as linhas por cima dele 
-        <TopMoviesBanner
-          movies={mockTopMovies}
-          autoPlayInterval={5000}
-          onSelect={(movie) => {
-            console.log('TopMoviesBanner: filme selecionado', movie.title);
-          }}
-          onAddToList={(movie) => {
-            console.log('TopMoviesBanner: adicionar à lista', movie.title);
-          }}
-        />
-        */}
-        {/* ROWS — ficam logo abaixo do hero */}
-        <div style={{
-          position: 'relative',
-          top: 0,
-          width: '100%',
-        }}>
+        {/* ROWS */}
+        <div style={{ position: 'relative', top: 0, width: '100%' }}>
           {rows.map((row, rowIdx) => (
             <div ref={el => { rowRefs.current[rowIdx] = el }} key={rowIdx} style={{ padding: '24px 0', overflow: 'visible' }}>
               <div style={{
@@ -463,7 +433,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                         borderRadius: 24,
                         display: 'flex', flexDirection: 'column',
                         alignItems: 'center', justifyContent: 'center', gap: 12,
-                        fontSize: '1.1rem', fontWeight: 700, textTransform: 'lowercase',
+                        fontSize: 18, fontWeight: 700, textTransform: 'lowercase',
                         transformOrigin: 'center center',
                         willChange: 'transform',
                         transform: focused ? `scale(${FOCUS_SCALE}) translateY(-8px)` : 'scale(1) translateY(0)',
@@ -493,10 +463,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   return <div style={{ height: 520 }} />
                 }
 
-                // Cálculo da Câmera (Foco Ancorado na Esquerda)
                 const cameraShift = -(focusedIndex * STEP)
-
-                // Altura da row expande se estiver focada (espaço para o texto)
                 const rowHeight = CARD_H + (isRowFocused ? 140 : 40)
 
                 return (
@@ -521,7 +488,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   {row.channels.map((ch, ci) => {
                     const diffCols = ci - focusedIndex
 
-                    // Virtual DOM - mantém o espaço mas destrói o conteúdo
                     if (diffCols < -4 || diffCols > 6) {
                       return <div key={ci} style={{ flex: `0 0 ${CARD_W}px`, height: CARD_H }} />
                     }
@@ -541,7 +507,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                         boxShadow: isFocused ? FOCUS_GLOW : 'none',
                         transition: `flex ${FOCUS_DURATION}ms ${FOCUS_EASING}, opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}, box-shadow ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                       }}>
-                        {/* Card expandido = poster inteiro esticado (sem split) */}
+                        {/* Poster */}
                         <div style={{
                           position: 'absolute', left: 0, top: 0,
                           width: '100%', height: '100%',
@@ -556,13 +522,15 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                           })()}
                         </div>
 
-                        {/* Overlay gradiente escuro + Título Grande no card focado */}
+                        {/* Gradiente overlay */}
                         <div style={{
                           position: 'absolute', bottom: 0, left: 0, right: 0, height: '55%',
                           background: 'linear-gradient(transparent, rgba(0,0,0,0.95))',
                           zIndex: 4, pointerEvents: 'none',
                           transition: `opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                         }} />
+
+                        {/* ★ Nome do canal: era 0.85rem (~13.6px) → 18px no estado normal, 1.5rem no focado */}
                         <div style={{
                           position: 'absolute', bottom: 0, left: 0, right: 0,
                           padding: isFocused ? '0 24px 24px' : '0 12px 14px',
@@ -570,7 +538,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                           transition: `padding ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                         }}>
                           <div style={{
-                            fontSize: isFocused ? '1.5rem' : '0.85rem', 
+                            fontSize: isFocused ? 24 : 18,
                             fontWeight: 800,
                             fontFamily: "'Barlow Condensed', sans-serif",
                             textTransform: 'uppercase', 
@@ -578,7 +546,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                             textOverflow: 'ellipsis',
                             whiteSpace: isFocused ? 'normal' : 'nowrap',
                             lineHeight: 1.2,
-                            maxHeight: isFocused ? '3.6rem' : '1.2rem',
+                            maxHeight: isFocused ? '3.6rem' : '1.5rem',
                             textShadow: '0 2px 10px rgba(0,0,0,0.95)',
                             transition: `font-size ${FOCUS_DURATION}ms ${FOCUS_EASING}, max-height ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                           }}>{ch.name}</div>
@@ -588,7 +556,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   })}
                   </div>
 
-                  {/* Meta Data Overlay - Só na row focada e estilo portrait */}
+                  {/* ★ Metadata Overlay — todos os fontSize eram 14px/15px → agora 18px */}
                   {isRowFocused && (() => {
                     const fch = row.channels[focusedIndex];
                     if (!fch) return null;
@@ -602,17 +570,19 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                           animation: `fadeInHero 300ms ease-out`,
                         }}
                       >
-                        <div style={{ display: 'flex', gap: 12, fontSize: 14, color: '#e5e5e5', fontWeight: 600, marginBottom: 8, alignItems: 'center' }}>
+                        {/* ★ linha de meta: match / ano / TV-MA / título — era fontSize:14 → 18px */}
+                        <div style={{ display: 'flex', gap: 12, fontSize: 18, color: '#e5e5e5', fontWeight: 600, marginBottom: 8, alignItems: 'center' }}>
                           <span style={{ color: '#10b981', fontWeight: 800 }}>{Math.round((tmdb?.rating || 8)*10)}% match</span>
                           <span>{tmdb?.year || '2024'}</span>
                           <span style={{ border: '1px solid rgba(255,255,255,0.4)', padding: '0 4px', borderRadius: 4, textTransform: 'uppercase' }}>TV-MA</span>
                           <span style={{ color: '#fff', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 300 }}>{tmdb?.title || fch.name}</span>
                         </div>
+                        {/* ★ overview: era fontSize:15 → 18px */}
                         <div style={{
-                           fontSize: 15, color: '#a3a3a3', lineHeight: 1.4,
+                           fontSize: 18, color: '#a3a3a3', lineHeight: 1.4,
                            display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden'
                         }}>
-                          {tmdb?.overview || `Sintonize ${fch.name}. Aproveite o melhor do entretenimento diretamente do cosmos com nossa infraestrutura de hipervelocidade.`}
+                          {tmdb?.overview || `Sintonize ${fch.name}. Aproveite o melhor do entretenimento diretamente do cosmos.`}
                         </div>
                       </div>
                     )
@@ -632,17 +602,14 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             background: 'rgba(0,0,0,0.92)',
             zIndex: 80, padding: '120px 80px 0',
           }}>
-            {/* Skeleton rows */}
             {[0, 1, 2].map(r => (
               <div key={r} style={{ marginBottom: 48 }}>
-                {/* Skeleton title */}
                 <div style={{
                   width: 220, height: 22, borderRadius: 6,
                   background: 'rgba(255,255,255,0.06)',
                   marginBottom: 20,
                   animation: 'shimmer 1.8s ease-in-out infinite',
                 }} />
-                {/* Skeleton cards row */}
                 <div style={{ display: 'flex', gap: 20 }}>
                   {[0, 1, 2, 3, 4, 5].map(c => (
                     <div key={c} style={{
@@ -703,18 +670,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           from { opacity: 0; }
           to { opacity: 1; }
         }
-        @keyframes kenBurnsHero {
-          0% { transform: scale(1.0) translate3d(0, 0, 0); }
-          100% { transform: scale(1.08) translate3d(-15px, -8px, 0); }
-        }
-        @keyframes slideUpHero {
-          from { opacity: 0; transform: translateY(30px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes pulse-glow {
-          0%, 100% { box-shadow: 0 0 8px ${GLOW}; }
-          50% { box-shadow: 0 0 20px ${ACCENT}; }
-        }
         @keyframes shimmer {
           0% { background-position: 200% 0; }
           100% { background-position: -200% 0; }
@@ -733,4 +688,3 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     </div>
   )
 }
-
