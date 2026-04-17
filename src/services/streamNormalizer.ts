@@ -16,17 +16,18 @@ export function detectQuality(name: string): StreamQuality {
   return 'UNKNOWN'
 }
 
-// ─── Limpar nome para obter identidade lógica ───────
 export function cleanChannelName(raw: string): string {
   return raw
     // Remove prefixos tipo |||BR|||, |BR|, [BR], {BR}
     .replace(/\|{2,}[^|]+\|{2,}/g, '')
     .replace(/\[[^\]]*\]/g, '')
     .replace(/\{[^}]*\}/g, '')
-    // Remove sufixos de qualidade
-    .replace(/\b(4K|UHD|2160[Pp]?|FHD|FULL[\s.-]?HD|1080[Pp]?|HD|720[Pp]?|SD|480[Pp]?|360[Pp]?)\b/gi, '')
+    // Remove (xxx) parênteses que costumam conter metadados e codecs
+    .replace(/\([^)]*\)/g, '')
+    // Remove sufixos de qualidade e codecs comuns
+    .replace(/\b(4K|UHD|2160[Pp]?|FHD|FULL[\s.-]?HD|1080[Pp]?|HD|720[Pp]?|SD|480[Pp]?|360[Pp]?|H\.?265|HEVC|VOD|LEG|DUB|PT-BR|VIP|PREMIUM)\b/gi, '')
     // Remove separadores e lixo
-    .replace(/[\|_\-–—]+/g, ' ')
+    .replace(/[|_.\-–—]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim()
     // Capitaliza primeira letra de cada palavra

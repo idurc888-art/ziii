@@ -71,55 +71,50 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
   ]
 
   const rows = buildRows([
-    // Linha 1 — Histórico
+    // Linha 1 — Jogos do Dia (Destaques ao Vivo)
+    {
+      type: 'wide',
+      title: '⚽ Jogos ',
+      titleAccent: 'do Dia',
+      channels: ContentCatalog.getPool('esportes').slice(0, 10)
+    },
+    // Linha 2 — Histórico Original
     {
       type: 'wide',
       title: '🔥 O Que Você ',
       titleAccent: 'Mais Assiste',
       channels: mostWatchedPool
     },
-    // Linha 2 — Jogos & Campeonatos
-    {
-      type: 'wide',
-      title: '⚽ Jogos & ',
-      titleAccent: 'Campeonatos',
-      channels: ContentCatalog.searchPool('esportes', /( x | \/ | - )|(libertadores|brasileir|champions|sulamericana)/i, 20)
-    },
-    // Linha 3 — Premiere Clubes
-    {
-      type: 'portrait',
-      title: '🏟️ Rede ',
-      titleAccent: 'Premiere',
-      channels: ContentCatalog.searchPool('esportes', /premiere/i, 20)
-    },
-    // Linha 4 — Canais de Esportes Clássicos
-    {
-      type: 'portrait',
-      title: '🏆 ESPN & ',
-      titleAccent: 'SporTV',
-      channels: ContentCatalog.searchPool('esportes', /espn|sportv/i, 20)
-    },
-    // Linha 5 — Mais Esportes & Lutas
-    {
-      type: 'portrait',
-      title: '🥊 Paramount, NBA & ',
-      titleAccent: 'Lutas',
-      channels: ContentCatalog.searchPool('esportes', /paramount|tnt|space|band|nba|ufc|combate/i, 20)
-    },
-    // Linha 6 — Top Filmes (Movido pro fim pra focar a home em esporte)
+    // Linha 3 — Top Filmes
     {
       type: 'portrait',
       title: '🎬 Top 10 ',
       titleAccent: 'Filmes',
       channels: ContentCatalog.pickBest('filmes', 20, { minScore: 50 })
     },
-    // Linha 7 — Top Séries
+    // Linha 4 — Top Séries
     {
       type: 'portrait',
       title: '📺 Top 10 ',
       titleAccent: 'Séries',
       channels: ContentCatalog.pickBest('series', 20, { minScore: 50 })
     },
+    // Linha 5 — Top YouTube & Infantil
+    {
+      type: 'portrait',
+      title: '▶️ Top 10 ',
+      titleAccent: 'YouTube',
+      channels: ContentCatalog.getPool('infantil').slice(0, 20)
+    },
+    // --- SCROLL INFINITO (Renderização Virtualizada Inteligente) ---
+    { type: 'portrait', title: '💥 Filmes de ', titleAccent: 'Ação', channels: ContentCatalog.pickByGenre('filmes', [28, 12], 20) },
+    { type: 'portrait', title: '😂 Rindo à ', titleAccent: 'Toa', channels: ContentCatalog.pickByGenre('filmes', [35], 20) },
+    { type: 'portrait', title: '🎭 Super ', titleAccent: 'Dramas', channels: ContentCatalog.pickByGenre('series', [18], 20) },
+    { type: 'simple',   title: '📰 Fique Por ', titleAccent: 'Dentro', channels: ContentCatalog.getPool('noticias').slice(0, 20) },
+    { type: 'portrait', title: '👻 Madrugada do ', titleAccent: 'Terror', channels: ContentCatalog.pickByGenre('filmes', [27, 53], 20) },
+    { type: 'simple',   title: '🌍 Nosso ', titleAccent: 'Planeta', channels: ContentCatalog.getPool('documentarios').slice(0, 20) },
+    { type: 'portrait', title: '👨‍👩‍👧 Para a ', titleAccent: 'Família', channels: ContentCatalog.pickByGenre('series', [10751, 10762], 20) },
+    { type: 'portrait', title: '🔮 Mundos ', titleAccent: 'Sci-Fi', channels: ContentCatalog.pickByGenre('filmes', [878, 14], 20) },
   ])
 
   const heroTmdb = new Map<string, TMDBResult | null>()
@@ -188,11 +183,48 @@ export async function buildTvContent(_groups: NormalizedGroups): Promise<ScreenC
   const heroChannels = ContentCatalog.getPool('abertos').slice(0, 5)
 
   const rows = buildRows([
-    { type: 'simple', title: '📺 Canais ', titleAccent: 'Abertos', channels: ContentCatalog.getPool('abertos').slice(0, 20) },
-    { type: 'simple', title: '⚽ ', titleAccent: 'Esportes', channels: ContentCatalog.getPool('esportes').slice(0, 20) },
-    { type: 'simple', title: '📰 ', titleAccent: 'Notícias', channels: ContentCatalog.getPool('noticias').slice(0, 20) },
-    { type: 'simple', title: '🌍 ', titleAccent: 'Documentários', channels: ContentCatalog.getPool('documentarios').slice(0, 20) },
-    { type: 'simple', title: '🎠 ', titleAccent: 'Infantil', channels: ContentCatalog.getPool('infantil').slice(0, 20) },
+    // Linha 1 — Jogos & Campeonatos
+    {
+      type: 'wide',
+      title: '⚽ Jogos & ',
+      titleAccent: 'Campeonatos',
+      channels: ContentCatalog.searchPool('esportes', /( x | \/ | - )|(libertadores|brasileir|champions|sulamericana)/i, 20)
+    },
+    // Linha 2 — Premiere Clubes
+    {
+      type: 'portrait',
+      title: '🏟️ Rede ',
+      titleAccent: 'Premiere',
+      channels: ContentCatalog.searchPool('esportes', /premiere/i, 20)
+    },
+    // Linha 3 — Canais de Esportes Clássicos
+    {
+      type: 'portrait',
+      title: '🏆 ESPN & ',
+      titleAccent: 'SporTV',
+      channels: ContentCatalog.searchPool('esportes', /espn|sportv/i, 20)
+    },
+    // Linha 4 — Mais Esportes & Lutas
+    {
+      type: 'portrait',
+      title: '🥊 Paramount, NBA & ',
+      titleAccent: 'Lutas',
+      channels: ContentCatalog.searchPool('esportes', /paramount|tnt|space|band|nba|ufc|combate/i, 20)
+    },
+    // Linha 5 — Esportes Diversos (Restante do pool de esportes)
+    { 
+      type: 'simple', 
+      title: '⚡ Mais ', 
+      titleAccent: 'Esportes', 
+      channels: ContentCatalog.getPool('esportes').slice(0, 20) 
+    },
+    // Linha 6 — Canais Abertos / Notícias (Complemento do Hub de TV Ao Vivo)
+    { 
+      type: 'simple', 
+      title: '📡 Canais ', 
+      titleAccent: 'Abertos', 
+      channels: ContentCatalog.getPool('abertos').slice(0, 20) 
+    },
   ])
 
   return { heroChannels, heroTmdb: new Map(), rows }

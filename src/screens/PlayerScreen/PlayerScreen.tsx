@@ -323,11 +323,10 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           else if (s.focusZone === 'controls') dispatch({ type: 'TOGGLE_QUALITIES' }) // Atalho CIMA nos controles abre Qualidade
           else if (!s.osdVisible || s.focusZone === 'none') {
             dispatch({ type: 'SET_OSD', visible: true })
+            // Não chame SET_FOCUS(qualities) antes do TOGGLE_QUALITIES, 
+            // ou use diretamente:
             dispatch({ type: 'SET_FOCUS', zone: 'qualities' })
-            dispatch({ type: 'TOGGLE_QUALITIES' }) // Toggle se estava fechado
-            // Na verdade, SET_FOCUS p qualities não é necessário pq o TOGGLE faz a troca:
-            // return dispatch({ type: 'TOGGLE_QUALITIES' })
-            // Mas vamos usar o reducer corretamente. Espera, o Toggle inverte de controls para qualities e vice versa. Se tiver em under zone 'none', o certo seria setar direto. Mas o s.focusZone é 'none'. Toggle colocaria 'qualities' -> 'controls'.
+            // não chamamos TOGGLE_QUALITIES para não desmarcar!
           }
           return
         case KEYS.LEFT:
@@ -539,7 +538,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
       {/* LOADING — spinner + slow warning */}
       {status === 'loading' && (
         <div style={{
-          position: 'absolute', inset: 0, zIndex: 20,
+          position: 'absolute', inset: 0, zIndex: 5,
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 20,
           background: 'rgba(0,0,0,0.6)',
