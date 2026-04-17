@@ -38,21 +38,54 @@ function buildRows(rowsData: Partial<ContentRow>[]): ContentRow[] {
 export async function buildHomeContent(_groups: NormalizedGroups): Promise<ScreenContent> {
   ContentCatalog.resetUsed()
 
-  // ZiiiTV banner + Mix de picks
+  // Hero: mix filmes + s\u00e9ries mais bem avaliados
   const heroChannels = [
-    { id: 'ziii', name: 'ziiiTV', url: '', logo: '', group: 'Ziii', streams: [], activeStream: { url: '', quality: 'UNKNOWN', label: 'Padrão' }, variantCount: 1 } as unknown as Channel,
+    { id: 'ziii', name: 'ziiiTV', url: '', logo: '', group: 'Ziii', streams: [], activeStream: { url: '', quality: 'UNKNOWN', label: 'Padr\u00e3o' }, variantCount: 1 } as unknown as Channel,
     ...ContentCatalog.pickMix(['filmes', 'series'], 4, 70)
   ]
 
   const rows = buildRows([
-    { type: 'wide', title: '🔥 Em ', titleAccent: 'Alta', channels: ContentCatalog.pickMix(['filmes', 'series'], 20, 60) },
-    { type: 'portrait', title: '🎬 Filmes do ', titleAccent: 'Momento', channels: ContentCatalog.pickBest('filmes', 20, { minScore: 50, minYear: 2022 }) },
-    { type: 'portrait', title: '📺 Séries ', titleAccent: 'Imperdíveis', channels: ContentCatalog.pickBest('series', 20, { minScore: 50 }) },
-    { type: 'wide', title: '🏆 Mais Bem ', titleAccent: 'Avaliados', channels: ContentCatalog.pickMix(['filmes', 'series'], 20, 70) },
-    { type: 'simple', title: '📡 Canais ', titleAccent: 'Ao Vivo', channels: ContentCatalog.getPool('abertos').slice(0, 20) }
+    // Linha 1 \u2014 Canais Ao Vivo / Mais Assistidos (wide horizontal)
+    {
+      type: 'wide',
+      title: '📡 Canais Ao Vivo \u2014 ',
+      titleAccent: 'Mais Assistidos',
+      channels: ContentCatalog.getPool('abertos').slice(0, 20)
+    },
+    // Linha 2 \u2014 Top 10 Filmes
+    {
+      type: 'portrait',
+      title: '🎬 Top 10 ',
+      titleAccent: 'Filmes',
+      channels: ContentCatalog.pickBest('filmes', 10, { minScore: 50 })
+    },
+    // Linha 3 \u2014 Top 10 S\u00e9ries
+    {
+      type: 'portrait',
+      title: '📺 Top 10 ',
+      titleAccent: 'S\u00e9ries',
+      channels: ContentCatalog.pickBest('series', 10, { minScore: 50 })
+    },
+    // Linha 4 \u2014 Top 10 Canais (esportes + noticias + outros)
+    {
+      type: 'wide',
+      title: '⚡ Top 10 ',
+      titleAccent: 'Canais',
+      channels: [
+        ...ContentCatalog.getPool('esportes').slice(0, 4),
+        ...ContentCatalog.getPool('noticias').slice(0, 3),
+        ...ContentCatalog.getPool('documentarios').slice(0, 3),
+      ].slice(0, 10)
+    },
+    // Linha 5 \u2014 Top 10 YouTube (canais do tipo infantil/documenta\u00e3o que tendem a ser YouTube)
+    {
+      type: 'portrait',
+      title: '▶️ Top 10 ',
+      titleAccent: 'YouTube',
+      channels: ContentCatalog.getPool('infantil').slice(0, 10)
+    },
   ])
 
-  // Compat map for hero
   const heroTmdb = new Map<string, TMDBResult | null>()
   for (const ch of heroChannels) {
     if (ch.name === 'ziiiTV') {
@@ -69,6 +102,7 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
 
   return { heroChannels, heroTmdb, rows }
 }
+
 
 export async function buildFilmesContent(_groups: NormalizedGroups): Promise<ScreenContent> {
   ContentCatalog.resetUsed()

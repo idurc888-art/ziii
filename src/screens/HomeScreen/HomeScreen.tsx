@@ -503,23 +503,21 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
               ) : (() => {
                 const CARD_W = 317
                 const CARD_H = 475
-                const GAP    = 20
+                const GAP    = 16
                 const STEP   = CARD_W + GAP
 
                 const isRowFocused  = focusZone === 'content' && contentRow === rowIdx
                 const focusedIndex  = contentCols[rowIdx] || 0
                 const isVirtualRow  = Math.abs(contentRow - rowIdx) <= 2
 
-                if (!isVirtualRow) return <div style={{ height: 520 }} />
+                if (!isVirtualRow) return <div style={{ height: 515 }} />
 
                 const cameraShift = -(focusedIndex * STEP)
-                const rowHeight   = CARD_H + (isRowFocused ? 140 : 40)
 
                 return (
                   <div style={{
-                    position: 'relative', width: '100%', height: rowHeight,
+                    position: 'relative', width: '100%', height: 515,
                     paddingTop: 12, overflow: 'hidden',
-                    transition: `height ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                   }}>
                     <div style={{
                       position: 'absolute', left: 80, top: 12,
@@ -531,22 +529,18 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                     }}>
                       {row.channels.map((ch, ci) => {
                         const diffCols = ci - focusedIndex
-                        if (diffCols < -4 || diffCols > 6) {
-                          return <div key={ci} style={{ flex: `0 0 ${CARD_W}px`, height: CARD_H }} />
+                        if (diffCols < -4 || diffCols > 8) {
+                          return <div key={ci} style={{ width: CARD_W, height: CARD_H, flexShrink: 0 }} />
                         }
-                        const isFocused  = isRowFocused && ci === focusedIndex
-                        const expandedW  = 840
-                        const currentW   = isFocused ? expandedW : CARD_W
+                        const isFocused = isRowFocused && ci === focusedIndex
                         return (
                           <div key={ci} onClick={() => onPlay(ch)} style={{
                             position: 'relative',
-                            flex: `0 0 ${currentW}px`, height: CARD_H,
-                            willChange: 'flex-basis, opacity',
+                            width: CARD_W, height: CARD_H, flexShrink: 0,
                             zIndex: isFocused ? 10 : 1,
-                            opacity: (isRowFocused && !isFocused) ? UNFOCUS_OPACITY : 1,
                             borderRadius: 8, cursor: 'pointer', overflow: 'hidden',
                             boxShadow: isFocused ? FOCUS_GLOW : 'none',
-                            transition: `flex ${FOCUS_DURATION}ms ${FOCUS_EASING}, opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}, box-shadow ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
+                            border: isFocused ? FOCUS_BORDER : '1px solid rgba(255,255,255,0.08)',
                           }}>
                             <div style={{
                               position: 'absolute', left: 0, top: 0,
