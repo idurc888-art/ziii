@@ -26,6 +26,17 @@ export interface TMDBResult {
   tmdbId: number    // ID interno TMDB
   mediaType: 'movie' | 'tv'  // tipo de mídia
   trailerKey: string // YouTube key (preenchido sob demanda)
+  // Dados Completos (opcionais — retrocompatível com dados mockados antigos)
+  tagline?: string          // frase de efeito
+  genres?: string[]         // lista de gêneros
+  runtime?: number          // duração em minutos (filmes) ou episódios (séries)
+  cast?: string[]           // top 5 atores
+  director?: string         // diretor (filmes) ou criador (séries)
+  voteCount?: number        // número de votos
+  popularity?: number       // score de popularidade TMDB
+  status?: string           // 'Released', 'Ended', 'Returning Series', etc.
+  posterFull?: string       // poster em qualidade máxima (w500)
+  backdropFull?: string     // backdrop em qualidade máxima (w1280)
 }
 
 interface CacheEntry {
@@ -120,15 +131,14 @@ function cleanName(name: string): string {
 
 async function fetchTMDB(query: string, type: 'movie' | 'tv'): Promise<TMDBResult | null> {
   const endpoint = type === 'movie' ? '/search/movie' : '/search/tv'
-  const url = `${BASE_URL}${endpoint}?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`
+  const searchUrl = `${BASE_URL}${endpoint}?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`
 
   try {
-    const res = await fetch(url)
+    const res = await fetch(searchUrl)
     if (!res.ok) {
       if (res.status === 429) {
-        console.warn('[TMDB] Rate limit atingido — aguardando...')
         await new Promise(r => setTimeout(r, 2000))
-        return fetchTMDB(query, type) // retry uma vez
+        return fetchTMDB(query, type)
       }
       return null
     }
@@ -137,19 +147,51 @@ async function fetchTMDB(query: string, type: 'movie' | 'tv'): Promise<TMDBResul
     const item = data.results?.[0]
     if (!item) return null
 
-    const posterPath = item.poster_path
-    const backdropPath = item.backdrop_path
+    // Segunda chamada com append_to_response para dados completos (créditos + vídeos)
+    const detailPath = type === 'movie' ? `/movie/${item.id}` : `/tv/${item.id}`
+    const detailUrl  = `${BASE_URL}${detailPath}?api_key=${API_KEY}&language=pt-BR&append_to_response=credits,videos`
+    const detailRes  = await fetch(detailUrl)
+    const detail     = detailRes.ok ? await detailRes.json() : item
+
+    const posterPath   = detail.poster_path   || item.poster_path
+    const backdropPath = detail.backdrop_path || item.backdrop_path
+
+    // Elenco: top 5 atores + diretor/criador
+    const cast: string[] = (detail.credits?.cast || [])
+      .slice(0, 5)
+      .map((p: any) => p.name as string)
+    const director = type === 'movie'
+      ? ((detail.credits?.crew || []).find((p: any) => p.job === 'Director')?.name || '')
+      : ((detail.created_by || [])[0]?.name || '')
+
+    // Gêneros
+    const genres: string[] = (detail.genres || []).map((g: any) => g.name as string)
+
+    // Duração
+    const runtime = type === 'movie'
+      ? (detail.runtime || 0)
+      : (detail.number_of_episodes || 0)
 
     return {
-      poster: posterPath ? `${IMG_BASE}${POSTER_SIZE}${posterPath}` : '',
-      backdrop: backdropPath ? `${IMG_BASE}${BACKDROP_SIZE}${backdropPath}` : '',
-      overview: item.overview || '',
-      rating: item.vote_average || 0,
-      year: (item.release_date || item.first_air_date || '').substring(0, 4),
-      title: item.title || item.name || query,
-      tmdbId: item.id || 0,
-      mediaType: type,
-      trailerKey: '',
+      poster:      posterPath   ? `${IMG_BASE}${POSTER_SIZE}${posterPath}`   : '',
+      backdrop:    backdropPath ? `${IMG_BASE}${BACKDROP_SIZE}${backdropPath}` : '',
+      posterFull:  posterPath   ? `${IMG_BASE}/w500${posterPath}`   : '',
+      backdropFull: backdropPath ? `${IMG_BASE}/w1280${backdropPath}` : '',
+      overview:    detail.overview || item.overview || '',
+      rating:      detail.vote_average || item.vote_average || 0,
+      voteCount:   detail.vote_count || item.vote_count || 0,
+      popularity:  detail.popularity || item.popularity || 0,
+      year:        (detail.release_date || detail.first_air_date || item.release_date || item.first_air_date || '').substring(0, 4),
+      title:       detail.title || detail.name || item.title || item.name || query,
+      tagline:     detail.tagline || '',
+      genres,
+      runtime,
+      cast,
+      director,
+      status:      detail.status || '',
+      tmdbId:      item.id || 0,
+      mediaType:   type,
+      trailerKey:  '',
     }
   } catch (e) {
     console.warn(`[TMDB] Erro ao buscar "${query}":`, e)

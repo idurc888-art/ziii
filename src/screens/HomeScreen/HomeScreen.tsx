@@ -81,6 +81,11 @@ function loadNavState(): { focusZone?: string; contentRow?: number; contentCols?
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Escala proporcional ao viewport — garante visual idêntico em 1280, 1366 e 1920px
+// Base de design: 1920px. Cards de 317px nessa base.
+const VW = typeof window !== 'undefined' ? window.innerWidth / 1920 : 1
+
 export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const saved = useRef(loadNavState()).current
   const [focusZone,   setFocusZone]   = useState<FocusZone>((saved?.focusZone as FocusZone) || 'hero')
@@ -501,12 +506,13 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   })}
                 </div>
               ) : (() => {
-                // ─── Layout Netflix: card focado wide 840px, demais portrait 317px ───
-                // ZERO anima\u00e7\u00e3o nas imagens ou no card. S\u00f3 o pan (translate3d) \u00e9 suave.
-                const CARD_W   = 317   // largura portrait dos cards n\u00e3o focados
-                const CARD_H   = 475   // altura fixa para TODOS (foco n\u00e3o muda altura)
-                const WIDE_W   = 840   // largura do card focado (backdrop wide)
-                const GAP      = 16
+                // ─── Layout Netflix: card focado wide, demais portrait ───
+                // Dimensões em px escaladas pelo viewport (base 1920px)
+                const CARD_W   = Math.round(317 * VW)   // portrait
+                const CARD_H   = Math.round(475 * VW)   // altura fixa
+                const WIDE_W   = Math.round(840 * VW)   // wide no foco
+                const GAP      = Math.round(16  * VW)
+                const LEFT_PAD = Math.round(80  * VW)
 
                 const isRowFocused = focusZone === 'content' && contentRow === rowIdx
                 const focusedIndex = contentCols[rowIdx] || 0
@@ -519,10 +525,10 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   <div style={{
                     position: 'relative', width: '100%',
                     height: CARD_H + 40,
-                    paddingTop: 12, overflow: 'hidden',
+                    paddingTop: Math.round(12 * VW), overflow: 'hidden',
                   }}>
                     <div style={{
-                      position: 'absolute', left: 80, top: 12,
+                      position: 'absolute', left: LEFT_PAD, top: Math.round(12 * VW),
                       display: 'flex', flexDirection: 'row', gap: GAP,
                       alignItems: 'flex-start',
                       transform: `translate3d(${cameraShift}px, 0, 0)`,
@@ -535,7 +541,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                           return <div key={ci} style={{ width: CARD_W, height: CARD_H, flexShrink: 0 }} />
                         }
                         const isFocused  = isRowFocused && ci === focusedIndex
-                        // Card focado mostra backdrop wide (840px), demais portrait (317px)
                         const cardW      = isFocused ? WIDE_W : CARD_W
 
                         const t          = row.tmdb?.get(ch.name) || ch.tmdb
@@ -548,10 +553,9 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                         return (
                           <div key={ci} onClick={() => onPlay(ch)} style={{
                             position: 'relative',
-                            // Largura muda instante\u00e2nea \u2014 SEM transition
                             width: cardW, height: CARD_H, flexShrink: 0,
                             zIndex: isFocused ? 10 : 1,
-                            borderRadius: 8, cursor: 'pointer', overflow: 'hidden',
+                            borderRadius: Math.round(8 * VW), cursor: 'pointer', overflow: 'hidden',
                             boxShadow: isFocused ? FOCUS_GLOW : 'none',
                             border: isFocused ? FOCUS_BORDER : '1px solid rgba(255,255,255,0.08)',
                             background: '#111',

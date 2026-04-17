@@ -1,6 +1,7 @@
 // Singleton IndexedDB client
+// VERSÃO 2: Invalida cache antigo (Channel sem streams[]/activeStream)
 const DB_NAME = 'ziiiTV-db'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE_NAME = 'playlist'
 
 let dbInstance: IDBDatabase | null = null

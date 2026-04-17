@@ -45,31 +45,35 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
   ]
 
   const rows = buildRows([
-    // Linha 1 \u2014 Canais Ao Vivo / Mais Assistidos (wide horizontal)
+    // Linha 1 — Mais Assistidos: filmes + séries + canais
     {
       type: 'wide',
-      title: '📡 Canais Ao Vivo \u2014 ',
-      titleAccent: 'Mais Assistidos',
-      channels: ContentCatalog.getPool('abertos').slice(0, 20)
+      title: '\U0001f525 Mais ',
+      titleAccent: 'Assistidos',
+      channels: [
+        ...ContentCatalog.pickBest('filmes', 4, { minScore: 60 }),
+        ...ContentCatalog.pickBest('series', 3, { minScore: 60 }),
+        ...ContentCatalog.getPool('abertos').slice(0, 3),
+      ]
     },
-    // Linha 2 \u2014 Top 10 Filmes
+    // Linha 2 — Top 10 Filmes
     {
       type: 'portrait',
-      title: '🎬 Top 10 ',
+      title: '\U0001f3ac Top 10 ',
       titleAccent: 'Filmes',
       channels: ContentCatalog.pickBest('filmes', 10, { minScore: 50 })
     },
-    // Linha 3 \u2014 Top 10 S\u00e9ries
+    // Linha 3 — Top 10 Séries
     {
       type: 'portrait',
-      title: '📺 Top 10 ',
-      titleAccent: 'S\u00e9ries',
+      title: '\U0001f4fa Top 10 ',
+      titleAccent: 'Séries',
       channels: ContentCatalog.pickBest('series', 10, { minScore: 50 })
     },
-    // Linha 4 \u2014 Top 10 Canais (esportes + noticias + outros)
+    // Linha 4 — Top 10 Canais (esportes + notícias + docs)
     {
       type: 'wide',
-      title: '⚡ Top 10 ',
+      title: '\u26a1 Top 10 ',
       titleAccent: 'Canais',
       channels: [
         ...ContentCatalog.getPool('esportes').slice(0, 4),
@@ -77,10 +81,17 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
         ...ContentCatalog.getPool('documentarios').slice(0, 3),
       ].slice(0, 10)
     },
-    // Linha 5 \u2014 Top 10 YouTube (canais do tipo infantil/documenta\u00e3o que tendem a ser YouTube)
+    // Linha 5 — Jogos do Dia (canais de esportes ao vivo)
+    {
+      type: 'wide',
+      title: '\u26bd Jogos ',
+      titleAccent: 'do Dia',
+      channels: ContentCatalog.getPool('esportes').slice(0, 10)
+    },
+    // Linha 6 — Top 10 YouTube
     {
       type: 'portrait',
-      title: '▶️ Top 10 ',
+      title: '\u25b6\ufe0f Top 10 ',
       titleAccent: 'YouTube',
       channels: ContentCatalog.getPool('infantil').slice(0, 10)
     },
