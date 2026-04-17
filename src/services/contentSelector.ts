@@ -71,49 +71,55 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
   ]
 
   const rows = buildRows([
-    // Linha 1 — Jogos do Dia (Destaques ao Vivo)
-    {
-      type: 'wide',
-      title: '⚽ Jogos ',
-      titleAccent: 'do Dia',
-      channels: ContentCatalog.getPool('esportes').slice(0, 10)
-    },
-    // Linha 2 — Histórico Original
+    // 1- O QUE VC MAIS ASSISTE (Histórico)
     {
       type: 'wide',
       title: '🔥 O Que Você ',
       titleAccent: 'Mais Assiste',
       channels: mostWatchedPool
     },
-    // Linha 3 — Top Filmes
+    // 2- JOGOS DO DIA
+    {
+      type: 'wide',
+      title: '⚽ Jogos ',
+      titleAccent: 'do Dia',
+      channels: ContentCatalog.getPool('esportes').slice(0, 10)
+    },
+    // 3- PRINCIPAIS FILMES
     {
       type: 'portrait',
-      title: '🎬 Top 10 ',
+      title: '🎬 Principais ',
       titleAccent: 'Filmes',
       channels: ContentCatalog.pickBest('filmes', 20, { minScore: 50 })
     },
-    // Linha 4 — Top Séries
+    // 4- PRINCIPAIS SÉRIES
     {
       type: 'portrait',
-      title: '📺 Top 10 ',
+      title: '📺 Principais ',
       titleAccent: 'Séries',
       channels: ContentCatalog.pickBest('series', 20, { minScore: 50 })
     },
-    // Linha 5 — Top YouTube & Infantil
+    // 5- PRINCIPAIS DESENHOS
     {
       type: 'portrait',
-      title: '▶️ Top 10 ',
-      titleAccent: 'YouTube',
+      title: '🧸 Principais ',
+      titleAccent: 'Desenhos',
       channels: ContentCatalog.getPool('infantil').slice(0, 20)
     },
-    // --- SCROLL INFINITO (Renderização Virtualizada Inteligente) ---
+    // 6- FILMES DE COMÉDIA
+    {
+      type: 'portrait',
+      title: '😂 Filmes de ',
+      titleAccent: 'Comédia',
+      channels: ContentCatalog.pickByGenre('filmes', [35], 20)
+    },
+    // --- SCROLL INFINITO (Mais Mix) ---
     { type: 'portrait', title: '💥 Filmes de ', titleAccent: 'Ação', channels: ContentCatalog.pickByGenre('filmes', [28, 12], 20) },
-    { type: 'portrait', title: '😂 Rindo à ', titleAccent: 'Toa', channels: ContentCatalog.pickByGenre('filmes', [35], 20) },
-    { type: 'portrait', title: '🎭 Super ', titleAccent: 'Dramas', channels: ContentCatalog.pickByGenre('series', [18], 20) },
+    { type: 'portrait', title: '🎭 Principais ', titleAccent: 'Dramas', channels: ContentCatalog.pickByGenre('series', [18], 20) },
     { type: 'simple',   title: '📰 Fique Por ', titleAccent: 'Dentro', channels: ContentCatalog.getPool('noticias').slice(0, 20) },
     { type: 'portrait', title: '👻 Madrugada do ', titleAccent: 'Terror', channels: ContentCatalog.pickByGenre('filmes', [27, 53], 20) },
-    { type: 'simple',   title: '🌍 Nosso ', titleAccent: 'Planeta', channels: ContentCatalog.getPool('documentarios').slice(0, 20) },
-    { type: 'portrait', title: '👨‍👩‍👧 Para a ', titleAccent: 'Família', channels: ContentCatalog.pickByGenre('series', [10751, 10762], 20) },
+    { type: 'simple',   title: '🌍 Documentários & ', titleAccent: 'Mundo', channels: ContentCatalog.getPool('documentarios').slice(0, 20) },
+    { type: 'portrait', title: '👨‍👩‍👧 Programação em ', titleAccent: 'Família', channels: ContentCatalog.pickByGenre('series', [10751, 10762], 20) },
     { type: 'portrait', title: '🔮 Mundos ', titleAccent: 'Sci-Fi', channels: ContentCatalog.pickByGenre('filmes', [878, 14], 20) },
   ])
 
