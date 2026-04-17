@@ -39,7 +39,7 @@ export function useStreamPreview(
 ) {
   const {
     idleDelay       = 800,
-    previewDuration = 18000,
+    previewDuration = 0, // 0 = infinito
     seekToMs        = 270000,
     fadeDuration    = 350,
   } = opts
@@ -131,11 +131,14 @@ export function useStreamPreview(
       setIsVideoVisible(true)
       setState('playing')
 
-      previewTimer.current = setTimeout(() => {
-        if (activeIdRef.current !== channelId) return
-        setIsVideoVisible(false)
-        setTimeout(cleanup, fadeDuration)
-      }, previewDuration)
+      // Apenas seta timeout se for configurado (maior que zero)
+      if (previewDuration > 0) {
+        previewTimer.current = setTimeout(() => {
+          if (activeIdRef.current !== channelId) return
+          setIsVideoVisible(false)
+          setTimeout(cleanup, fadeDuration)
+        }, previewDuration)
+      }
     }
 
     if (alreadyBuffered && players.current[slot]) {

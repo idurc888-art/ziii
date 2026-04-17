@@ -22,6 +22,9 @@ interface HeroBannerProps {
   onSelect?: (slide: HeroSlide) => void;
   onAddToList?: (slide: HeroSlide) => void;
   focused?: boolean;
+  previewOverrideChannel?: Channel | null;
+  previewOverrideImage?: string;
+  hideUI?: boolean;
 }
 
 export function HeroBanner({
@@ -30,6 +33,9 @@ export function HeroBanner({
   onSelect,
   onAddToList,
   focused = false,
+  previewOverrideChannel,
+  previewOverrideImage,
+  hideUI = false,
 }: HeroBannerProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(autoPlayInterval > 0);
@@ -41,11 +47,13 @@ export function HeroBanner({
 
   // Hook nativo AVPlay para Background Video (double-buffer)
   const currentSlideValid = slides[currentIndex];
+  // Usa o channel do slide se não houver override
+  const activeChannel = previewOverrideChannel || currentSlideValid?.channel || null;
   const nextSlideValid    = slides[(currentIndex + 1) % Math.max(slides.length, 1)];
   const { videoStyle, backdropStyle, activePlayerId } = useStreamPreview(
-    currentSlideValid?.channel || null,
+    activeChannel,
     nextSlideValid?.channel || null,
-    focused,
+    true, // always true if the component expects to preview! Wait, if hideUI true, we are focused? Actually `true`
     {
       idleDelay: 800,
       previewDuration: 18000,
@@ -128,7 +136,7 @@ export function HeroBanner({
       
       // A TV envia keys sempre para window. O controle de focus global fica no HomeScreen.
       // O HeroBanner só reage se ele tiver focused == true passado via props
-      if (!focused) return;
+      if (!focused || hideUI) return;
 
       switch (e.key) {
         case 'ArrowLeft':  
@@ -200,7 +208,7 @@ export function HeroBanner({
               <div
                 className="hero-bg"
                 style={{
-                  backgroundImage: `url(${slide.backgroundImage})`,
+                  backgroundImage: `url(${isActive && previewOverrideImage ? previewOverrideImage : slide.backgroundImage})`,
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                   zIndex: 1,
@@ -208,7 +216,7 @@ export function HeroBanner({
                 }}
               />
               <div className="hero-overlay" style={{ zIndex: 2 }} />
-              <div className="hero-content" style={{ zIndex: 3 }}>
+              <div className="hero-content" style={{ zIndex: 3, transition: 'opacity 300ms, transform 300ms', opacity: hideUI ? 0 : 1, transform: hideUI ? 'translateY(20px)' : 'translateY(0)' }}>
                 {slide.badge && <span className="hero-badge">{slide.badge}</span>}
                 <h1 className="hero-title">{slide.title}</h1>
                 {slide.subtitle && <h2 className="hero-subtitle">{slide.subtitle}</h2>}
@@ -223,11 +231,11 @@ export function HeroBanner({
         })}
       </div>
 
-      <div className="hero-progress-container">
+      <div className="hero-progress-container" style={{ opacity: hideUI ? 0 : 1, transition: 'opacity 300ms' }}>
         <div ref={progressRef} className="hero-progress" style={{ width: '0%' }} />
       </div>
 
-      <div className="hero-dots">
+      <div className="hero-dots" style={{ opacity: hideUI ? 0 : 1, transition: 'opacity 300ms' }}>
         {slides.map((_, dotIndex) => (
           <button
             key={dotIndex}
@@ -242,7 +250,7 @@ export function HeroBanner({
         ))}
       </div>
 
-      <div className="hero-controls">
+      <div className="hero-controls" style={{ opacity: hideUI ? 0 : 1, transition: 'opacity 300ms' }}>
         <button
           className="hero-control-btn"
           onClick={() => {

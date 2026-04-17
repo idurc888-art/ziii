@@ -525,22 +525,25 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         overflow: 'hidden',
       }}>
 
-        {/* BANNER — expande para 100% quando focado, ou HERO_H quando vizinho */}
+        {/* BANNER — Banner Principal e Background de Vídeo Global */}
         <div style={{
           position: 'absolute',
           top: 0, left: 0, right: 0,
-          height: focusZone === 'hero' ? '100%' : (isHeroVisible ? HERO_H : '0px'),
+          height: focusZone === 'hero' ? '100%' : (focusZone === 'content' ? '100%' : HERO_H),
           overflow: 'hidden',
           transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
-          zIndex: 10,
+          zIndex: focusZone === 'content' ? 0 : 10,
           borderRadius: focusZone === 'hero' ? 0 : 16,
           border: focusZone === 'hero' ? '2px solid #ff006e' : '2px solid transparent',
           boxShadow: focusZone === 'hero' ? '0 0 32px rgba(255,0,110,0.55), 0 0 80px rgba(255,0,110,0.25)' : 'none',
         }}>
           <HeroBanner
             slides={heroSlides}
-            autoPlayInterval={8000}
+            autoPlayInterval={0}
             focused={focusZone === 'hero'}
+            hideUI={focusZone === 'content'}
+            previewOverrideChannel={focusZone === 'content' ? debouncedPreview : undefined}
+            previewOverrideImage={focusZone === 'content' && debouncedPreview && liveTmdbData[debouncedPreview.name]?.backdrop ? `https://image.tmdb.org/t/p/w1280${liveTmdbData[debouncedPreview.name]?.backdrop}` : undefined}
             onSelect={(slide) => {
               if (slide.type === 'live') {
                 const channel = Object.values(groups).flat().find(ch =>
@@ -553,7 +556,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           />
         </div>
 
-        {/* ROWS — scroll próprio, alinhadas sempre ao topo */}
+        {/* ROWS — scroll próprio, por cima do background de vídeo quando em content mode */}
         <div
           ref={rowsWrapRef}
           style={{
@@ -561,9 +564,10 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             top: 0, left: 0, right: 0, bottom: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
-            paddingTop: focusZone === 'hero' ? '100%' : (isHeroVisible ? HERO_H : '8px'),
+            paddingTop: focusZone === 'content' ? '8px' : (focusZone === 'hero' ? '100%' : HERO_H),
             transition: 'padding-top 520ms cubic-bezier(0.25,1,0.5,1)',
             scrollBehavior: 'smooth',
+            zIndex: 15,
           }}
         >
           {rows.map((row, rowIdx) => (
