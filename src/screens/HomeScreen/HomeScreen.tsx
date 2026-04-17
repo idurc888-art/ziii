@@ -15,6 +15,7 @@ import { HeroBanner, mockHeroSlides, type HeroSlide } from '../../components/Her
 // ─── Types ──────────────────────────────────────────────────────────────────
 import type { Channel } from '../../types/channel'
 import { QUALITY_BADGE_COLOR } from '../../types/channel'
+import { getSportsArtwork } from '../../services/sportsArtwork'
 
 interface Props {
   groups: Record<UICategory, Channel[]>
@@ -544,8 +545,9 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                         const cardW      = isFocused ? WIDE_W : CARD_W
 
                         const t          = row.tmdb?.get(ch.name) || ch.tmdb
-                        const posterSrc  = t?.poster  ? `https://image.tmdb.org/t/p/w342${t.poster}`   : (ch.logo || '')
-                        const backdropSrc = t?.backdrop ? `https://image.tmdb.org/t/p/w780${t.backdrop}` : posterSrc
+                        const sportsArt  = getSportsArtwork(ch.name)
+                        const posterSrc  = sportsArt?.poster || (t?.poster ? `https://image.tmdb.org/t/p/w342${t.poster}` : (ch.logo || ''))
+                        const backdropSrc = sportsArt?.backdrop || (t?.backdrop ? `https://image.tmdb.org/t/p/w780${t.backdrop}` : posterSrc)
                         const quality    = ch.activeStream?.quality
                         const badgeColor = quality && quality !== 'UNKNOWN' ? QUALITY_BADGE_COLOR[quality] : null
                         const textColor  = quality === 'HD' ? '#fff' : '#000'

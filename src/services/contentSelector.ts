@@ -71,51 +71,54 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
   ]
 
   const rows = buildRows([
-    // Linha 1 — Mais Assistidos: Histórico real + séries/filmes complementares (mínimo 10)
+    // Linha 1 — Histórico
     {
       type: 'wide',
       title: '🔥 O Que Você ',
       titleAccent: 'Mais Assiste',
       channels: mostWatchedPool
     },
-    // Linha 2 — Top 10 Filmes (Buscando 20 pra garantir fallback robusto)
+    // Linha 2 — Jogos & Campeonatos
+    {
+      type: 'wide',
+      title: '⚽ Jogos & ',
+      titleAccent: 'Campeonatos',
+      channels: ContentCatalog.searchPool('esportes', /( x | \/ | - )|(libertadores|brasileir|champions|sulamericana)/i, 20)
+    },
+    // Linha 3 — Premiere Clubes
+    {
+      type: 'portrait',
+      title: '🏟️ Rede ',
+      titleAccent: 'Premiere',
+      channels: ContentCatalog.searchPool('esportes', /premiere/i, 20)
+    },
+    // Linha 4 — Canais de Esportes Clássicos
+    {
+      type: 'portrait',
+      title: '🏆 ESPN & ',
+      titleAccent: 'SporTV',
+      channels: ContentCatalog.searchPool('esportes', /espn|sportv/i, 20)
+    },
+    // Linha 5 — Mais Esportes & Lutas
+    {
+      type: 'portrait',
+      title: '🥊 Paramount, NBA & ',
+      titleAccent: 'Lutas',
+      channels: ContentCatalog.searchPool('esportes', /paramount|tnt|space|band|nba|ufc|combate/i, 20)
+    },
+    // Linha 6 — Top Filmes (Movido pro fim pra focar a home em esporte)
     {
       type: 'portrait',
       title: '🎬 Top 10 ',
       titleAccent: 'Filmes',
       channels: ContentCatalog.pickBest('filmes', 20, { minScore: 50 })
     },
-    // Linha 3 — Top 10 Séries (Buscando 20 pra garantir fallback robusto)
+    // Linha 7 — Top Séries
     {
       type: 'portrait',
       title: '📺 Top 10 ',
       titleAccent: 'Séries',
       channels: ContentCatalog.pickBest('series', 20, { minScore: 50 })
-    },
-    // Linha 4 — Top 10 Canais (esportes + notícias + docs)
-    {
-      type: 'wide',
-      title: '⚡ Top 10 ',
-      titleAccent: 'Canais',
-      channels: [
-        ...ContentCatalog.getPool('esportes').slice(0, 4),
-        ...ContentCatalog.getPool('noticias').slice(0, 3),
-        ...ContentCatalog.getPool('documentarios').slice(0, 3),
-      ].slice(0, 10)
-    },
-    // Linha 5 — Jogos do Dia (canais de esportes ao vivo)
-    {
-      type: 'wide',
-      title: '⚽ Jogos ',
-      titleAccent: 'do Dia',
-      channels: ContentCatalog.getPool('esportes').slice(0, 10)
-    },
-    // Linha 6 — Top 10 YouTube
-    {
-      type: 'portrait',
-      title: '▶️ Top 10 ',
-      titleAccent: 'YouTube',
-      channels: ContentCatalog.getPool('infantil').slice(0, 10)
     },
   ])
 
