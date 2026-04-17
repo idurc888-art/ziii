@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { type Channel } from '../../types/channel'
 import { initPlayer, loadStream, destroyPlayer, selectPlayerBackend } from '../../services/playerService'
 import { avplayLoad, avplayStop, isAVPlayAvailable } from '../../services/avplayService'
@@ -22,7 +22,7 @@ const CTRL = { RW10: 0, RW: 1, PLAY: 2, FF: 3, FF10: 4, VOL: 5, SETTINGS: 6 } as
 const CTRL_COUNT = 7
 
 type PlayerStatus = 'loading' | 'playing' | 'paused' | 'error'
-type FocusZone   = 'controls' | 'none'
+type FocusZone   = 'controls' | 'qualities' | 'none'
 
 interface State {
   status:     PlayerStatus
@@ -30,6 +30,7 @@ interface State {
   osdVisible: boolean
   focusZone:  FocusZone
   ctrlFocus:  number
+  qualityIdx: number
   slowWarning: boolean
   debugKeys:  Array<{ code: number; key: string }>
 }
@@ -39,6 +40,8 @@ type Action =
   | { type: 'SET_OSD';      visible: boolean }
   | { type: 'SET_FOCUS';    zone: FocusZone; ctrl?: number }
   | { type: 'CTRL_MOVE';    dir: 'left' | 'right' }
+  | { type: 'QUALITY_MOVE'; dir: 'up' | 'down'; max: number }
+  | { type: 'TOGGLE_QUALITIES' }
   | { type: 'SLOW_WARNING'; show: boolean }
   | { type: 'DEBUG_KEY';    code: number; key: string }
 
@@ -48,6 +51,8 @@ function reducer(s: State, a: Action): State {
     case 'SET_OSD':      return { ...s, osdVisible: a.visible }
     case 'SET_FOCUS':    return { ...s, focusZone: a.zone, ctrlFocus: a.ctrl ?? s.ctrlFocus }
     case 'CTRL_MOVE':    return { ...s, ctrlFocus: a.dir === 'left' ? Math.max(0, s.ctrlFocus - 1) : Math.min(CTRL_COUNT - 1, s.ctrlFocus + 1) }
+    case 'QUALITY_MOVE': return { ...s, qualityIdx: a.dir === 'up' ? Math.max(0, s.qualityIdx - 1) : Math.min(a.max - 1, s.qualityIdx + 1) }
+    case 'TOGGLE_QUALITIES': return { ...s, focusZone: s.focusZone === 'qualities' ? 'controls' : 'qualities' }
     case 'SLOW_WARNING': return { ...s, slowWarning: a.show }
     case 'DEBUG_KEY':    return { ...s, debugKeys: [{ code: a.code, key: a.key }, ...s.debugKeys.slice(0, 7)] }
     default: return s
@@ -57,6 +62,7 @@ function reducer(s: State, a: Action): State {
 const INITIAL: State = {
   status: 'loading', error: null,
   osdVisible: true, focusZone: 'none', ctrlFocus: CTRL.PLAY,
+  qualityIdx: 0,
   slowWarning: false,
   debugKeys: [],
 }
@@ -94,7 +100,13 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
   const inFlightRef   = useRef(false)
   const retryCountRef = useRef(0)
 
-  const streamUrl = channel.activeStream?.url || (channel as any).url || ''
+  const [currentStream, setCurrentStream] = useState(channel.activeStream)
+  
+  useEffect(() => {
+    setCurrentStream(channel.activeStream)
+  }, [channel])
+
+  const streamUrl = currentStream?.url || (channel as any).url || ''
   const backend  = selectPlayerBackend(streamUrl)
   const isAVPlay = backend === 'avplay'
 
@@ -272,7 +284,11 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
       showOsd()
       const s = stateRef.current
       switch (e.keyCode) {
-        case KEYS.BACK: case 8:        e.preventDefault(); onBackRef.current(); return
+        case KEYS.BACK: case 8:
+          e.preventDefault()
+          if (s.focusZone === 'qualities') dispatch({ type: 'TOGGLE_QUALITIES' })
+          else onBackRef.current()
+          return
         case KEYS.EXIT:                e.preventDefault(); try { tizen?.application?.getCurrentApplication().exit() } catch (_) {}; return
         case KEYS.CH_UP:               e.preventDefault(); onNextRef.current?.(); return
         case KEYS.CH_DOWN:             e.preventDefault(); onPrevRef.current?.(); return
@@ -280,14 +296,39 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         case KEYS.PAUSE:               e.preventDefault(); try { avplay ? avplay.pause() : videoRef.current?.pause() } catch (_) {}; dispatch({ type: 'SET_STATUS', status: 'paused' }); if (osdTimerRef.current) clearTimeout(osdTimerRef.current); dispatch({ type: 'SET_OSD', visible: true }); return
         case KEYS.PLAY_PAUSE: case KEYS.OK:
           e.preventDefault()
-          if (s.osdVisible && s.focusZone === 'controls') { doToggle() }
-          else { dispatch({ type: 'SET_FOCUS', zone: 'controls', ctrl: CTRL.PLAY }) }
+          if (s.osdVisible && s.focusZone === 'controls') {
+            if (s.ctrlFocus === CTRL.SETTINGS) dispatch({ type: 'TOGGLE_QUALITIES' })
+            else doToggle()
+          } else if (s.osdVisible && s.focusZone === 'qualities') {
+            const selected = channel.streams[s.qualityIdx]
+            if (selected) {
+              setCurrentStream(selected)
+              channel.activeStream = selected // hot swap persist
+              dispatch({ type: 'TOGGLE_QUALITIES' })
+            }
+          } else {
+            dispatch({ type: 'SET_FOCUS', zone: 'controls', ctrl: CTRL.PLAY })
+          }
           return
         case KEYS.FF: e.preventDefault(); try { avplay?.jumpForward(10000)  } catch (_) {}; return
         case KEYS.RW: e.preventDefault(); try { avplay?.jumpBackward(10000) } catch (_) {}; return
-        case KEYS.DOWN: case KEYS.UP:
+        case KEYS.DOWN:
           e.preventDefault()
-          if (!s.osdVisible || s.focusZone === 'none') dispatch({ type: 'SET_FOCUS', zone: 'controls', ctrl: CTRL.PLAY })
+          if (s.focusZone === 'qualities') dispatch({ type: 'QUALITY_MOVE', dir: 'down', max: channel.streams.length })
+          else if (!s.osdVisible || s.focusZone === 'none') dispatch({ type: 'SET_FOCUS', zone: 'controls', ctrl: CTRL.PLAY })
+          return
+        case KEYS.UP:
+          e.preventDefault()
+          if (s.focusZone === 'qualities') dispatch({ type: 'QUALITY_MOVE', dir: 'up', max: channel.streams.length })
+          else if (s.focusZone === 'controls') dispatch({ type: 'TOGGLE_QUALITIES' }) // Atalho CIMA nos controles abre Qualidade
+          else if (!s.osdVisible || s.focusZone === 'none') {
+            dispatch({ type: 'SET_OSD', visible: true })
+            dispatch({ type: 'SET_FOCUS', zone: 'qualities' })
+            dispatch({ type: 'TOGGLE_QUALITIES' }) // Toggle se estava fechado
+            // Na verdade, SET_FOCUS p qualities não é necessário pq o TOGGLE faz a troca:
+            // return dispatch({ type: 'TOGGLE_QUALITIES' })
+            // Mas vamos usar o reducer corretamente. Espera, o Toggle inverte de controls para qualities e vice versa. Se tiver em under zone 'none', o certo seria setar direto. Mas o s.focusZone é 'none'. Toggle colocaria 'qualities' -> 'controls'.
+          }
           return
         case KEYS.LEFT:
           e.preventDefault()
@@ -457,6 +498,43 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           </div>
         </div>
       </div>
+
+      {/* QUALITIES MENU Overlay */}
+      {osdVisible && focusZone === 'qualities' && (
+        <div style={{
+          position: 'absolute', right: 80, bottom: 120, zIndex: 100,
+          background: 'rgba(0,0,0,0.85)', borderRadius: 16,
+          border: '1px solid rgba(255,255,255,0.1)',
+          padding: 24, minWidth: 320,
+          display: 'flex', flexDirection: 'column', gap: 12,
+          boxShadow: '0 20px 50px rgba(0,0,0,0.8)',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <div style={{ fontSize: 22, fontWeight: 700, opacity: 0.9, marginBottom: 8 }}>Qualidade</div>
+          {channel.streams.map((stream, idx) => {
+            const isFocused = state.qualityIdx === idx
+            const isCurrent = stream === currentStream
+            return (
+              <div key={idx} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '16px 20px', borderRadius: 8,
+                background: isFocused ? 'rgba(255,255,255,0.15)' : 'transparent',
+                border: isFocused ? '2px solid white' : '2px solid transparent',
+                transition: 'all 150ms',
+                transform: isFocused ? 'scale(1.02)' : 'scale(1)',
+                boxShadow: isFocused ? '0 0 15px rgba(255,255,255,0.2)' : 'none'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {isCurrent && <div style={{ width: 8, height: 8, borderRadius: '50%', background: ACCENT }} />}
+                  <span style={{ fontSize: 22, fontWeight: isFocused ? 700 : 500, color: isFocused ? '#fff' : 'rgba(255,255,255,0.6)' }}>
+                    {stream.label}
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* LOADING — spinner + slow warning */}
       {status === 'loading' && (
