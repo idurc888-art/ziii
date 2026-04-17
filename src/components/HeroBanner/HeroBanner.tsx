@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Channel } from '../../types/channel';
 import { useStreamPreview } from '../../hooks/useStreamPreview';
 import './HeroBanner.css';
@@ -31,23 +31,8 @@ export function HeroBanner({
   onAddToList,
   focused = false,
 }: HeroBannerProps) {
-  const hasMultiple = slides.length > 1;
-  const extendedSlides = useMemo(() => {
-    if (!hasMultiple) return slides.map(s => ({ ...s, _key: s.id }));
-    return [
-      { ...slides[slides.length - 1], _key: 'clone-last' },
-      ...slides.map((s, i) => ({ ...s, _key: `${s.id}-${i}` })),
-      { ...slides[0], _key: 'clone-first' }
-    ];
-  }, [slides, hasMultiple]);
-
-  const [internalIndex, setInternalIndex] = useState(hasMultiple ? 1 : 0);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(autoPlayInterval > 0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-
-  const currentIndex = hasMultiple 
-    ? (internalIndex === 0 ? slides.length - 1 : internalIndex === extendedSlides.length - 1 ? 0 : internalIndex - 1)
-    : 0;
 
   const trackRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -55,7 +40,7 @@ export function HeroBanner({
   const lastKeyPressRef = useRef<number>(0);
 
   // Hook nativo AVPlay para Background Video
-  const currentSlideValid = extendedSlides[currentIndex];
+  const currentSlideValid = slides[currentIndex];
   const { videoStyle, backdropStyle } = useStreamPreview(
     currentSlideValid?.channel || null,
     focused,
@@ -72,7 +57,7 @@ export function HeroBanner({
     if (!trackRef.current) return;
     const track = trackRef.current;
     const screenCenter = window.innerWidth / 2;
-    extendedSlides.forEach((_, index) => {
+    slides.forEach((_, index) => {
       const slide = track.children[index] as HTMLElement;
       if (!slide) return;
       const slideRect = slide.getBoundingClientRect();
@@ -81,46 +66,20 @@ export function HeroBanner({
       const bg = slide.querySelector('.hero-bg') as HTMLElement;
       if (bg) bg.style.transform = `translateX(${offset * 30}px)`;
     });
-  }, [extendedSlides]);
+  }, [slides]);
 
   // Handle slide changing
-  const goToSlide = useCallback((newInternal: number, animated = true) => {
-    if (!hasMultiple) return;
-    setInternalIndex(newInternal);
-    setIsTransitioning(animated);
-
-    if (trackRef.current) {
-      const slideWidth = window.innerWidth - 120;
-      const gap = 16;
-      const position = -(newInternal * (slideWidth + gap));
-
-      trackRef.current.style.transition = animated
-        ? 'transform 1.1s cubic-bezier(0.16, 1, 0.3, 1)'
-        : 'none';
-      trackRef.current.style.transform = `translateX(${position}px)`;
-    }
-
-    // Logic to handle snapping back infinitely
-    if (animated && (newInternal === 0 || newInternal === extendedSlides.length - 1)) {
-      setTimeout(() => {
-        if (!trackRef.current) return;
-        const targetInternal = newInternal === 0 ? slides.length : 1;
-        setInternalIndex(targetInternal);
-        setIsTransitioning(false);
-        const slideWidth = window.innerWidth - 120;
-        const gap = 16;
-        const position = -(targetInternal * (slideWidth + gap));
-        trackRef.current.style.transition = 'none';
-        trackRef.current.style.transform = `translateX(${position}px)`;
-      }, 1100);
-    } else {
-      setTimeout(() => setIsTransitioning(false), 1100);
-    }
-  }, [hasMultiple, slides.length, extendedSlides.length]);
+  const goToSlide = useCallback((newIndex: number) => {
+    if (slides.length <= 1) return;
+    let nextIdx = newIndex;
+    if (nextIdx >= slides.length) nextIdx = 0;
+    if (nextIdx < 0) nextIdx = slides.length - 1;
+    setCurrentIndex(nextIdx);
+  }, [slides.length]);
 
   // Auto-play interval handling
   useEffect(() => {
-    if (!isAutoPlaying || autoPlayInterval <= 0) {
+    if (!isAutoPlaying || autoPlayInterval <= 0 || slides.length <= 1) {
       clearTimeout(autoPlayTimerRef.current);
       if (progressRef.current) progressRef.current.style.width = '0%';
       return;
@@ -141,22 +100,20 @@ export function HeroBanner({
     }
 
     autoPlayTimerRef.current = setTimeout(() => {
-      goToSlide(internalIndex + 1, true);
+      goToSlide(currentIndex + 1);
     }, autoPlayInterval);
 
     return () => clearTimeout(autoPlayTimerRef.current);
-  }, [internalIndex, isAutoPlaying, autoPlayInterval, goToSlide]);
+  }, [currentIndex, isAutoPlaying, autoPlayInterval, goToSlide, slides.length]);
 
   // Initial layout and Parallax
   useEffect(() => {
-    // Force a position layout on mount or slides change without animation
-    if (slides.length > 0) goToSlide(hasMultiple ? 1 : 0, false);
     setIsAutoPlaying(autoPlayInterval > 0);
-  }, [slides, hasMultiple, goToSlide, autoPlayInterval]);
+  }, [autoPlayInterval]);
 
   useEffect(() => {
     updateParallax();
-  }, [internalIndex, updateParallax]);
+  }, [currentIndex, updateParallax]);
 
   // D-pad
   useEffect(() => {
@@ -164,8 +121,8 @@ export function HeroBanner({
       const now = Date.now();
       if (now - lastKeyPressRef.current < 400) return;
       
-      // se ainda estiver animando do snap
-      if (isTransitioning) return;
+      // Animando do snap?
+      // if (isTransitioning) return;
       
       // A TV envia keys sempre para window. O controle de focus global fica no HomeScreen.
       // O HeroBanner só reage se ele tiver focused == true passado via props
@@ -175,12 +132,12 @@ export function HeroBanner({
         case 'ArrowLeft':  
           lastKeyPressRef.current = now;
           setIsAutoPlaying(false);
-          goToSlide(internalIndex - 1); 
+          goToSlide(currentIndex - 1); 
           break;
         case 'ArrowRight': 
           lastKeyPressRef.current = now;
           setIsAutoPlaying(false);
-          goToSlide(internalIndex + 1); 
+          goToSlide(currentIndex + 1); 
           break;
         case 'Enter':
           lastKeyPressRef.current = now;
@@ -194,14 +151,12 @@ export function HeroBanner({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [internalIndex, isTransitioning, currentIndex, slides, goToSlide, onSelect, onAddToList, focused]);
+  }, [currentIndex, slides, goToSlide, onSelect, onAddToList, focused]);
 
   // Resize
   useEffect(() => {
-    const handleResize = () => goToSlide(internalIndex, false);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [internalIndex, goToSlide]);
+    // Layout update not physically needed for absolute flash
+  }, []);
 
   if (slides.length === 0) {
     return <div className="hero-empty">Nenhum conteúdo disponível</div>;
@@ -220,18 +175,15 @@ export function HeroBanner({
       />
       <div
         ref={trackRef}
-        className="hero-track"
-        style={{ gap: '16px', padding: '0 60px' }}
+        className="hero-track-absolute"
       >
-        {extendedSlides.map((slide, index) => {
-          const isActive = hasMultiple 
-            ? index === internalIndex
-            : index === currentIndex;
+        {slides.map((slide, index) => {
+          const isActive = index === currentIndex;
 
           return (
             <div
-              key={`${slide._key}-${index}`}
-              className={`hero-slide ${isActive ? 'active' : ''}`}
+              key={`${slide.id}-${index}`}
+              className={`hero-slide-absolute ${isActive ? 'active' : ''}`}
               data-index={index}
             >
               <div
@@ -272,7 +224,7 @@ export function HeroBanner({
             onClick={() => { 
               setIsAutoPlaying(false); 
               clearTimeout(autoPlayTimerRef.current); 
-              goToSlide(hasMultiple ? dotIndex + 1 : dotIndex); 
+              goToSlide(dotIndex); 
             }}
             aria-label={`Ir para slide ${dotIndex + 1}`}
           />
@@ -284,7 +236,7 @@ export function HeroBanner({
           className="hero-control-btn"
           onClick={() => {
             setIsAutoPlaying(!isAutoPlaying);
-            if (!isAutoPlaying) goToSlide(internalIndex);
+            if (!isAutoPlaying) goToSlide(currentIndex);
             else {
               clearTimeout(autoPlayTimerRef.current);
               if (progressRef.current) progressRef.current.style.width = '0%';
