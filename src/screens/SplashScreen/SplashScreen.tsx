@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface Props {
   onDone: () => void
@@ -6,13 +6,16 @@ interface Props {
 
 export default function SplashScreen({ onDone }: Props) {
   const [phase, setPhase] = useState<'in' | 'hold' | 'out'>('in')
+  const [imgFailed, setImgFailed] = useState(false)
+  const onDoneRef = useRef(onDone)
+  onDoneRef.current = onDone
 
   useEffect(() => {
     const t1 = setTimeout(() => setPhase('hold'), 400)
-    const t2 = setTimeout(() => setPhase('out'), 2400)
-    const t3 = setTimeout(() => onDone(), 2900)
+    const t2 = setTimeout(() => setPhase('out'),  2400)
+    const t3 = setTimeout(() => onDoneRef.current(), 2900)
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
-  }, [onDone])
+  }, [])
 
   return (
     <div style={{
@@ -27,19 +30,27 @@ export default function SplashScreen({ onDone }: Props) {
       overflow: 'hidden',
     }}>
 
-      {/* Imagem alien — sem overlay, limpa */}
-      <img
-        src="hero-alien.png"
-        alt=""
-        style={{
+      {/* ★ Fallback gradiente caso hero-alien.png falhe */}
+      {imgFailed ? (
+        <div style={{
           position: 'absolute', inset: 0,
-          width: '100%', height: '100%',
-          objectFit: 'cover',
-          objectPosition: 'center top',
-          opacity: phase === 'in' ? 0 : 1,
-          transition: 'opacity 900ms ease',
-        }}
-      />
+          background: 'linear-gradient(160deg, #0a0014 0%, #1a0030 50%, #000 100%)',
+        }} />
+      ) : (
+        <img
+          src="hero-alien.png"
+          alt=""
+          onError={() => setImgFailed(true)}
+          style={{
+            position: 'absolute', inset: 0,
+            width: '100%', height: '100%',
+            objectFit: 'cover',
+            objectPosition: 'center top',
+            opacity: phase === 'in' ? 0 : 1,
+            transition: 'opacity 900ms ease',
+          }}
+        />
+      )}
 
       {/* Conteúdo centralizado — por cima */}
       <div style={{
@@ -64,10 +75,10 @@ export default function SplashScreen({ onDone }: Props) {
           ziiiTV
         </div>
 
-        {/* Tagline */}
+        {/* ★ Tagline: era 13px → agora 18px */}
         <div style={{
           fontFamily: "'Outfit', sans-serif",
-          fontSize: 13,
+          fontSize: 18,
           fontWeight: 400,
           letterSpacing: 5,
           textTransform: 'uppercase',
