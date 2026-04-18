@@ -71,56 +71,20 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
   ]
 
   const rows = buildRows([
-    // 1- O QUE VC MAIS ASSISTE (Histórico)
+    // 1- HISTÓRICO (manter como principal na Home antes do resto)
     {
       type: 'wide',
-      title: '🔥 O Que Você ',
-      titleAccent: 'Mais Assiste',
+      title: '🔥 Continuar ',
+      titleAccent: 'Assistindo',
       channels: mostWatchedPool
     },
-    // 2- JOGOS DO DIA
-    {
-      type: 'wide',
-      title: '⚽ Jogos ',
-      titleAccent: 'do Dia',
-      channels: ContentCatalog.getPool('esportes').slice(0, 10)
-    },
-    // 3- PRINCIPAIS FILMES
-    {
-      type: 'portrait',
-      title: '🎬 Principais ',
-      titleAccent: 'Filmes',
-      channels: ContentCatalog.pickBest('filmes', 20, { minScore: 50 })
-    },
-    // 4- PRINCIPAIS SÉRIES
-    {
-      type: 'portrait',
-      title: '📺 Principais ',
-      titleAccent: 'Séries',
-      channels: ContentCatalog.pickBest('series', 20, { minScore: 50 })
-    },
-    // 5- PRINCIPAIS DESENHOS
-    {
-      type: 'portrait',
-      title: '🧸 Principais ',
-      titleAccent: 'Desenhos',
-      channels: ContentCatalog.getPool('infantil').slice(0, 20)
-    },
-    // 6- FILMES DE COMÉDIA
-    {
-      type: 'portrait',
-      title: '😂 Filmes de ',
-      titleAccent: 'Comédia',
-      channels: ContentCatalog.pickByGenre('filmes', [35], 20)
-    },
-    // --- SCROLL INFINITO (Mais Mix) ---
-    { type: 'portrait', title: '💥 Filmes de ', titleAccent: 'Ação', channels: ContentCatalog.pickByGenre('filmes', [28, 12], 20) },
-    { type: 'portrait', title: '🎭 Principais ', titleAccent: 'Dramas', channels: ContentCatalog.pickByGenre('series', [18], 20) },
-    { type: 'simple',   title: '📰 Fique Por ', titleAccent: 'Dentro', channels: ContentCatalog.getPool('noticias').slice(0, 20) },
-    { type: 'portrait', title: '👻 Madrugada do ', titleAccent: 'Terror', channels: ContentCatalog.pickByGenre('filmes', [27, 53], 20) },
-    { type: 'simple',   title: '🌍 Documentários & ', titleAccent: 'Mundo', channels: ContentCatalog.getPool('documentarios').slice(0, 20) },
-    { type: 'portrait', title: '👨‍👩‍👧 Programação em ', titleAccent: 'Família', channels: ContentCatalog.pickByGenre('series', [10751, 10762], 20) },
-    { type: 'portrait', title: '🔮 Mundos ', titleAccent: 'Sci-Fi', channels: ContentCatalog.pickByGenre('filmes', [878, 14], 20) },
+    { type: 'portrait', title: '⭐ Top ', titleAccent: 'Filmes', channels: ContentCatalog.pickBest('filmes', 20, { minScore: 60 }) },
+    { type: 'portrait', title: '🏆 Top ', titleAccent: 'Séries', channels: ContentCatalog.pickBest('series', 20, { minScore: 65 }) },
+    { type: 'portrait', title: '😂 ', titleAccent: 'Comédias', channels: ContentCatalog.pickByGenre('filmes', [35], 20) },
+    { type: 'portrait', title: '🍕 ', titleAccent: 'Variados', channels: ContentCatalog.pickMix(['filmes', 'series'], 20, 50) },
+    { type: 'portrait', title: '🖥️ ', titleAccent: '4K & UHD', channels: ContentCatalog.pickByGenre('filmes', [878, 28], 20) }, // proxy genérico pra 4k já que o catalogo é the moviedb
+    { type: 'portrait', title: '💥 ', titleAccent: 'Ação', channels: ContentCatalog.pickByGenre('filmes', [28, 12], 20) },
+    { type: 'portrait', title: '👻 ', titleAccent: 'Terror', channels: ContentCatalog.pickByGenre('filmes', [27, 53], 20) },
   ])
 
   const heroTmdb = new Map<string, TMDBResult | null>()
@@ -137,6 +101,27 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
     }
   }
 
+  // ─── Força o Batch Enrich síncrono para esta página ───
+  const toEnrich = [
+    ...heroChannels,
+    ...rows.flatMap(r => r.channels)
+  ].map(ch => ch.name).filter((v, i, a) => a.indexOf(v) === i)
+
+  const { enrichBatch } = await import('./tmdbService')
+  const tmdbResults = await enrichBatch(toEnrich, 30, 300)
+
+  for (const row of rows) {
+    for (const ch of row.channels) {
+      if (tmdbResults.has(ch.name)) row.tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
+      else if (ch.tmdb) row.tmdb.set(ch.name, ch.tmdb)
+    }
+  }
+  for (const ch of heroChannels) {
+    if (ch.name !== 'ziiiTV' && tmdbResults.has(ch.name)) {
+      heroTmdb.set(ch.name, tmdbResults.get(ch.name) || null)
+    }
+  }
+
   return { heroChannels, heroTmdb, rows }
 }
 
@@ -146,18 +131,56 @@ export async function buildFilmesContent(_groups: NormalizedGroups): Promise<Scr
 
   const heroChannels = ContentCatalog.pickBest('filmes', 5, { minScore: 70 })
 
+  // Extrair histórico específico de filmes
+  const allChannelsMap = new Map<string, Channel>()
+  for (const list of Object.values(_groups)) {
+    for (const ch of list) allChannelsMap.set(ch.name, ch)
+  }
+  const historyEntries = getMostWatched(10)
+  const historyFilmes = historyEntries
+    .map(h => allChannelsMap.get(h.name)!)
+    .filter(ch => ch && ContentCatalog.getPool('filmes').includes(ch))
+
+  // Fallback se histórico for vazio
+  const fallbackNeeded = 10 - historyFilmes.length
+  let maisAssistidos = historyFilmes
+  if (fallbackNeeded > 0) {
+    maisAssistidos = [
+      ...historyFilmes,
+      ...ContentCatalog.pickBest('filmes', fallbackNeeded, { minScore: 70 })
+    ]
+  }
+
   const rows = buildRows([
-    { type: 'wide', title: '⭐ Melhores ', titleAccent: 'Filmes', channels: ContentCatalog.pickBest('filmes', 20, { minScore: 60 }) },
-    { type: 'portrait', title: '🆕 ', titleAccent: 'Lançamentos', channels: ContentCatalog.pickBest('filmes', 20, { minYear: 2023 }) },
-    { type: 'portrait', title: '💥 Ação & ', titleAccent: 'Aventura', channels: ContentCatalog.pickByGenre('filmes', [28, 12], 20) },
-    { type: 'portrait', title: '😂 ', titleAccent: 'Comédia', channels: ContentCatalog.pickByGenre('filmes', [35], 20) },
-    { type: 'portrait', title: '🎭 Drama & ', titleAccent: 'Suspense', channels: ContentCatalog.pickByGenre('filmes', [18, 53], 20) },
-    { type: 'portrait', title: '👻 Terror & ', titleAccent: 'Thriller', channels: ContentCatalog.pickByGenre('filmes', [27, 53], 20) },
-    { type: 'portrait', title: '🚀 Sci-Fi & ', titleAccent: 'Fantasia', channels: ContentCatalog.pickByGenre('filmes', [878, 14], 20) },
+    { type: 'wide', title: '🔥 Mais ', titleAccent: 'Assistidos', channels: maisAssistidos },
+    { type: 'portrait', title: '🖥️ Filmes em ', titleAccent: '4K & UHD', channels: ContentCatalog.searchByGroup('filmes', /4k/i, 20) },
+    { type: 'portrait', title: '😂 ', titleAccent: 'Comédias', channels: ContentCatalog.searchByGroup('filmes', /com\u00e9dia|comedia/i, 20) },
+    { type: 'portrait', title: '💥 ', titleAccent: 'Ação', channels: ContentCatalog.searchByGroup('filmes', /a\u00e7\u00e3o|acao|aventura/i, 20) },
+    { type: 'portrait', title: '🎬 Grandes ', titleAccent: 'Clássicos', channels: ContentCatalog.searchByGroup('filmes', /cl\u00e1ssico|classico|antigo/i, 20) },
   ])
 
   const heroTmdb = new Map<string, TMDBResult | null>()
-  for (const ch of heroChannels) heroTmdb.set(ch.name, ch.tmdb || null)
+  for (const ch of heroChannels) {
+    heroTmdb.set(ch.name, ch.tmdb || null)
+  }
+
+  const toEnrich = [
+    ...heroChannels,
+    ...rows.flatMap(r => r.channels)
+  ].map(ch => ch.name).filter((v, i, a) => a.indexOf(v) === i)
+
+  const { enrichBatch } = await import('./tmdbService')
+  const tmdbResults = await enrichBatch(toEnrich, 30, 300)
+
+  for (const row of rows) {
+    for (const ch of row.channels) {
+      if (tmdbResults.has(ch.name)) row.tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
+      else if (ch.tmdb) row.tmdb.set(ch.name, ch.tmdb)
+    }
+  }
+  for (const ch of heroChannels) {
+    if (tmdbResults.has(ch.name)) heroTmdb.set(ch.name, tmdbResults.get(ch.name) || null)
+  }
 
   return { heroChannels, heroTmdb, rows }
 }
@@ -169,16 +192,36 @@ export async function buildSeriesContent(_groups: NormalizedGroups): Promise<Scr
 
   const rows = buildRows([
     { type: 'wide', title: '🏆 Top ', titleAccent: 'Séries', channels: ContentCatalog.pickBest('series', 20, { minScore: 65 }) },
-    { type: 'portrait', title: '🆕 Novas ', titleAccent: 'Temporadas', channels: ContentCatalog.pickBest('series', 20, { minYear: 2023 }) },
-    { type: 'portrait', title: '🎭 ', titleAccent: 'Dramas', channels: ContentCatalog.pickByGenre('series', [18], 20) },
-    { type: 'portrait', title: '😂 ', titleAccent: 'Comédias', channels: ContentCatalog.pickByGenre('series', [35], 20) },
-    { type: 'portrait', title: '💥 ', titleAccent: 'Ação', channels: ContentCatalog.pickByGenre('series', [28, 10759], 20) },
-    { type: 'portrait', title: '🔮 Sci-Fi & ', titleAccent: 'Mistério', channels: ContentCatalog.pickByGenre('series', [878, 9648], 20) },
-    { type: 'portrait', title: '👨‍👩‍👧 ', titleAccent: 'Família', channels: ContentCatalog.pickByGenre('series', [10751, 10762], 20) },
+    { type: 'portrait', title: '🆕 ', titleAccent: 'Lançamentos', channels: ContentCatalog.pickBest('series', 20, { minYear: 2023 }) },
+    { type: 'portrait', title: '😂 ', titleAccent: 'Comédias', channels: ContentCatalog.searchByGroup('series', /com\u00e9dia|comedia/i, 20) },
+    { type: 'portrait', title: '🍕 ', titleAccent: 'Variados', channels: ContentCatalog.pickBest('series', 20, { minScore: 50 }) },
+    { type: 'portrait', title: '💥 ', titleAccent: 'Ação', channels: ContentCatalog.searchByGroup('series', /a\u00e7\u00e3o|acao|aventura/i, 20) },
+    { type: 'portrait', title: '🎭 ', titleAccent: 'Drama', channels: ContentCatalog.searchByGroup('series', /drama/i, 20) },
+    { type: 'portrait', title: '🔮 Sci-Fi & ', titleAccent: 'Mistério', channels: ContentCatalog.searchByGroup('series', /fic\u00e7\u00e3o|sci|mist\u00e9rio/i, 20) },
   ])
 
   const heroTmdb = new Map<string, TMDBResult | null>()
-  for (const ch of heroChannels) heroTmdb.set(ch.name, ch.tmdb || null)
+  for (const ch of heroChannels) {
+    heroTmdb.set(ch.name, ch.tmdb || null)
+  }
+
+  const toEnrich = [
+    ...heroChannels,
+    ...rows.flatMap(r => r.channels)
+  ].map(ch => ch.name).filter((v, i, a) => a.indexOf(v) === i)
+
+  const { enrichBatch } = await import('./tmdbService')
+  const tmdbResults = await enrichBatch(toEnrich, 30, 300)
+
+  for (const row of rows) {
+    for (const ch of row.channels) {
+      if (tmdbResults.has(ch.name)) row.tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
+      else if (ch.tmdb) row.tmdb.set(ch.name, ch.tmdb)
+    }
+  }
+  for (const ch of heroChannels) {
+    if (tmdbResults.has(ch.name)) heroTmdb.set(ch.name, tmdbResults.get(ch.name) || null)
+  }
 
   return { heroChannels, heroTmdb, rows }
 }

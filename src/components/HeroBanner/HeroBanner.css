@@ -6,16 +6,7 @@
   height: 100%;
   overflow: hidden;
   user-select: none;
-  /* Glow border quando banner está focado */
-  border-radius: 16px;
   transition: box-shadow 400ms cubic-bezier(0.22,1,0.36,1);
-}
-
-.hero-viewport.hero-focused {
-  box-shadow:
-    0 0 0 2px #ff006e,
-    0 0 32px rgba(255,0,110,0.55),
-    0 0 80px rgba(255,0,110,0.25);
 }
 
 /* HeroBanner track is now stacked absolute instead of flex */
@@ -23,16 +14,16 @@
   position: relative;
   width: 100%;
   height: 100%;
-  padding: 0 60px;
+  padding: 0;
 }
 
 /* Slide padrão (inativo) - opacidade zero, invisivel */
 .hero-slide-absolute {
   position: absolute;
-  inset: 0 60px; /* match padding of track */
+  inset: 0; /* match padding of track */
   height: 100%;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: 0; /* sem borda para full screen pleno */
   transform-origin: center center;
   opacity: 0;
   visibility: hidden;
@@ -43,14 +34,10 @@
 .hero-slide-absolute.active {
   opacity: 1;
   visibility: visible;
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.08);
   z-index: 2;
 }
 
 /* Removendo Ken Burns - Background estático e simples */
-.hero-slide-absolute.active .hero-bg {
-  /* Sem animação */
-}
 
 .hero-bg {
   position: absolute;
@@ -216,7 +203,7 @@
 .hero-controls {
   position: absolute;
   bottom: 60px;
-  right: 20px;
+  right: 60px; /* Alinhado ao canto direito (não 20px) porque agora é full-screen */
   z-index: 20;
 }
 
@@ -224,14 +211,14 @@
   background: rgba(0,0,0,0.5);
   border: 1px solid rgba(255,255,255,0.3);
   color: white;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 18px;
   transition: all 0.2s;
 }
 
@@ -250,8 +237,6 @@
   color: rgba(255,255,255,0.5);
   font-size: 1.2rem;
   background: rgba(0,0,0,0.1);
-  border-radius: 16px;
-  margin: 0 60px;
 }
 
 /* Foco para navegação D-pad */

@@ -74,21 +74,27 @@ export function useStreamPreview(
     const url = pickPreviewUrl(ch)
     try {
       avplay.open(url)
+      avplay.setDisplayRect(0, 0, 1, 1) // invisível
+
       avplay.setListener({
         onbufferingcomplete: () => {
           buffered.current.add(ch.id)
-          // Seek antecipado no VOD
           if (isVOD(ch)) {
             try { avplay.seekTo(seekToMs) } catch {}
           }
-          // Pausa silencioso — pronto para swap instantâneo
           try { avplay.pause() } catch {}
         },
         onerror: () => { closeSlot(inactiveSlot) }
       })
-      avplay.setDisplayRect(0, 0, 1, 1) // invisível
-      avplay.play()
-      players.current[inactiveSlot] = avplay
+
+      avplay.prepareAsync(() => {
+        try {
+          avplay.play()
+          players.current[inactiveSlot] = avplay
+        } catch {}
+      }, () => {
+        closeSlot(inactiveSlot)
+      })
     } catch {}
   }
 
@@ -153,15 +159,26 @@ export function useStreamPreview(
       const url = pickPreviewUrl(ch)
       try {
         avplay.open(url)
+        avplay.setDisplayRect(0, 0, window.screen.width, window.screen.height)
+        
         avplay.setListener({
           onbufferingcomplete: onReady,
           onerror: () => { if (activeIdRef.current === channelId) setState('error') }
         })
-        avplay.setDisplayRect(0, 0, window.screen.width, window.screen.height)
-        avplay.play()
-        players.current[slot] = avplay
+
+        avplay.prepareAsync(() => {
+          try {
+            avplay.play()
+            players.current[slot] = avplay
+          } catch (e) {
+            console.warn('[StreamPreview play]', e)
+            setState('error')
+          }
+        }, () => {
+          setState('error')
+        })
       } catch (e) {
-        console.warn('[StreamPreview]', e)
+        console.warn('[StreamPreview open]', e)
         setState('error')
       }
     }

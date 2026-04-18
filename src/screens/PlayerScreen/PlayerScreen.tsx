@@ -314,12 +314,12 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         case KEYS.RW: e.preventDefault(); try { avplay?.jumpBackward(10000) } catch (_) {}; return
         case KEYS.DOWN:
           e.preventDefault()
-          if (s.focusZone === 'qualities') dispatch({ type: 'QUALITY_MOVE', dir: 'down', max: channel.streams.length })
+          if (s.focusZone === 'qualities') dispatch({ type: 'QUALITY_MOVE', dir: 'down', max: (channel?.streams || []).length })
           else if (!s.osdVisible || s.focusZone === 'none') dispatch({ type: 'SET_FOCUS', zone: 'controls', ctrl: CTRL.PLAY })
           return
         case KEYS.UP:
           e.preventDefault()
-          if (s.focusZone === 'qualities') dispatch({ type: 'QUALITY_MOVE', dir: 'up', max: channel.streams.length })
+          if (s.focusZone === 'qualities') dispatch({ type: 'QUALITY_MOVE', dir: 'up', max: (channel?.streams || []).length })
           else if (s.focusZone === 'controls') dispatch({ type: 'TOGGLE_QUALITIES' }) // Atalho CIMA nos controles abre Qualidade
           else if (!s.osdVisible || s.focusZone === 'none') {
             dispatch({ type: 'SET_OSD', visible: true })
@@ -510,7 +510,7 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           animation: 'fadeIn 0.2s ease-out'
         }}>
           <div style={{ fontSize: 22, fontWeight: 700, opacity: 0.9, marginBottom: 8 }}>Qualidade</div>
-          {channel.streams.map((stream, idx) => {
+          {(channel?.streams || []).map((stream, idx) => {
             const isFocused = state.qualityIdx === idx
             const isCurrent = stream === currentStream
             return (

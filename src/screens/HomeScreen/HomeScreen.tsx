@@ -64,11 +64,23 @@ const CATEGORY_ICONS: Record<string, { emoji: string; color: string }> = {
   filmes:        { emoji: '🎬', color: '#a78bfa' },
   series:        { emoji: '📺', color: '#60a5fa' },
   esportes:      { emoji: '⚽', color: '#4ade80' },
-  infantil:      { emoji: '🎮', color: '#f472b6' },
+  infantil:      { emoji: '🧸', color: '#f472b6' },
   abertos:       { emoji: '📡', color: '#60a5fa' },
   documentarios: { emoji: '🌍', color: '#34d399' },
   noticias:      { emoji: '📰', color: '#94a3b8' },
   outros:        { emoji: '🔥', color: '#ff6b35' },
+  'Top Filmes':  { emoji: '⭐', color: '#fbbf24' },
+  'Top Séries':  { emoji: '🏆', color: '#fbbf24' },
+  'Lançamentos': { emoji: '🆕', color: '#fb7185' },
+  'Comédias':    { emoji: '😂', color: '#fcd34d' },
+  'Variados':    { emoji: '🍕', color: '#a78bfa' },
+  '4K & UHD':    { emoji: '🖥️', color: '#818cf8' },
+  'Ação':        { emoji: '💥', color: '#f87171' },
+  'Terror':      { emoji: '👻', color: '#9ca3af' },
+  'Nacionais':   { emoji: '🇧🇷', color: '#4ade80' },
+  'Drama':       { emoji: '🎭', color: '#a78bfa' },
+  'Animes':      { emoji: '👺', color: '#f472b6' },
+  'Infantil':    { emoji: '🧸', color: '#f472b6' },
 }
 
 const FOCUS_SCALE    = 1.05
@@ -342,17 +354,31 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       }
 
       if (zone === 'content') {
-        if      (isDown)  { if (rw < allRows.length - 1) setContentRow(rw + 1) }
-        else if (isUp)    {
-          if (rw === 0) { setFocusZone('hero'); setHeroState('focused') }
-          else setContentRow(rw - 1)
-        }
-        else if (isRight) {
-          const maxCol = (allRows[rw]?.channels.length || 1) - 1
-          if (cols[rw] < maxCol) { const next = [...cols]; next[rw]++; setContentCols(next) }
-        }
-        else if (isLeft) {
-          if (cols[rw] > 0) { const next = [...cols]; next[rw]--; setContentCols(next) }
+        const rowData = allRows[rw]
+        const isGrid = rowData?.type === 'grid'
+        const c = cols[rw]
+
+        if (isDown) {
+          if (isGrid && c < 4 && rowData.channels.length > c + 4) {
+            const next = [...cols]; next[rw] = c + 4; setContentCols(next)
+          } else if (rw < allRows.length - 1) {
+            setContentRow(rw + 1)
+          }
+        } else if (isUp) {
+          if (isGrid && c >= 4) {
+            const next = [...cols]; next[rw] = c - 4; setContentCols(next)
+          } else if (rw === 0) {
+            setFocusZone('hero'); setHeroState('focused')
+          } else {
+            setContentRow(rw - 1)
+          }
+        } else if (isRight) {
+          if (isGrid && (c === 3 || c === 7)) return // stay in grid
+          const maxCol = (rowData?.channels.length || 1) - 1
+          if (c < maxCol) { const next = [...cols]; next[rw]++; setContentCols(next) }
+        } else if (isLeft) {
+          if (isGrid && (c === 0 || c === 4)) { setFocusZone('sidebar') }
+          else if (c > 0) { const next = [...cols]; next[rw]--; setContentCols(next) }
           else { setFocusZone('sidebar') }
         }
         return
@@ -390,18 +416,18 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       {/* ── SIDEBAR (Minimalista Enterprise) — Sobreposição Absoluta ─── */}
       <div style={{
         position: 'absolute',
-        top: focusZone === 'sidebar' ? 0 : 12,
-        left: focusZone === 'sidebar' ? 0 : 12,
+        top: focusZone === 'sidebar' ? 0 : 32,
+        left: focusZone === 'sidebar' ? 0 : 32,
         bottom: focusZone === 'sidebar' ? 0 : 'auto',
-        width: focusZone === 'sidebar' ? 320 : 44,
-        height: focusZone === 'sidebar' ? '100%' : 44,
-        borderRadius: focusZone === 'sidebar' ? 0 : 22,
-        background: focusZone === 'sidebar' ? 'rgba(10,10,10,0.97)' : 'rgba(255,0,110,0.15)',
+        width: focusZone === 'sidebar' ? 320 : 16,
+        height: focusZone === 'sidebar' ? '100%' : 16,
+        borderRadius: focusZone === 'sidebar' ? 0 : 8,
+        background: focusZone === 'sidebar' ? 'rgba(10,10,10,0.97)' : '#ff006e',
         backdropFilter: 'blur(20px)',
-        border: focusZone === 'sidebar' ? '1px solid rgba(255,0,110,0.3)' : '1px solid rgba(255,0,110,0.4)',
+        border: focusZone === 'sidebar' ? '1px solid rgba(255,0,110,0.3)' : 'none',
         boxShadow: focusZone === 'sidebar'
           ? '0 0 60px rgba(255,0,110,0.5), inset 0 0 30px rgba(255,0,110,0.05)'
-          : '0 0 16px rgba(255,0,110,0.35), 0 0 4px rgba(255,0,110,0.6)',
+          : '0 0 24px rgba(255,0,110,0.8), 0 0 8px rgba(255,0,110,1)',
         zIndex: 999,
         display: 'flex', flexDirection: 'column',
         alignItems: focusZone === 'sidebar' ? 'flex-start' : 'center',
@@ -410,18 +436,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
         overflow: 'hidden',
       }}>
-        {/* Quando fechado mostra o "z" */}
-        <div style={{
-          position: 'absolute',
-          top: 0, left: 0, width: '100%', height: '100%',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 24, fontWeight: 900, color: '#fff', fontStyle: 'italic',
-          opacity: focusZone === 'sidebar' ? 0 : 1,
-          pointerEvents: 'none',
-          transition: 'opacity 300ms ease',
-        }}>
-          z
-        </div>
+        {/* Quando fechado não tem mais "z", é apenas a bolinha que editamos acima */}
 
         {/* Itens do Menu Lateral (escondidos quando fechado) */}
         <div style={{
@@ -470,21 +485,20 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         </div>
       </div>
 
-      {/* ── CORPO PRINCIPAL ──────────────────────────────────────────────── */}
+      {/* ── CORPO PRINCIPAL (tela inteira) ───────────────────────────────── */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-        display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
       }}>
 
-        {/* ── TOPBAR (sticky ao topo) ─────────────────────────────────────── */}
+        {/* ── TOPBAR (flutuante sobre banner — Netflix style) ───────────── */}
       <div style={{
-        flexShrink: 0,
-        position: 'relative', zIndex: 90,
+        position: 'absolute', top: 0, left: 0, right: 0,
+        zIndex: 90,
         height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '0 80px',
         background: focusZone === 'hero'
-          ? 'rgba(0,0,0,0.1)'
+          ? 'linear-gradient(to bottom, rgba(0,0,0,0.5), transparent)'
           : isHeroVisible
             ? 'linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0.4), transparent)'
             : 'rgba(0,0,0,0.92)',
@@ -514,13 +528,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         </div>
       </div>
 
-      {/* ── CONTEÚDO SCROLLÁVEL (banner + rows num único flex-column) ─── */}
-      <div style={{
-        flex: 1,
-        position: 'relative',
-        overflow: 'hidden',
-      }}>
-
         {/* BANNER — Banner Principal e Background de Vídeo Global */}
         <div style={{
           position: 'absolute',
@@ -528,7 +535,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           overflow: 'hidden',
           transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
           zIndex: focusZone === 'content' ? 0 : 10,
-          opacity: focusZone === 'content' ? 0 : 1,
           border: focusZone === 'hero' ? '2px solid #ff006e' : '2px solid transparent',
           boxShadow: focusZone === 'hero' ? '0 0 32px rgba(255,0,110,0.55), 0 0 80px rgba(255,0,110,0.25)' : 'none',
         }}>
@@ -559,11 +565,11 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             top: 0, left: 0, right: 0, bottom: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
-            paddingTop: focusZone === 'hero' ? '100vh' : '8px',
+            paddingTop: focusZone === 'content' ? '80px' : 'calc(100vh - 220px)',
             transition: 'padding-top 520ms cubic-bezier(0.25,1,0.5,1)',
             scrollBehavior: 'smooth',
             zIndex: 15,
-            background: focusZone === 'content' ? BG : 'transparent',
+            background: focusZone === 'content' ? 'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.8) 35%, rgba(0,0,0,1) 100%)' : 'transparent',
           }}
         >
           {rows.map((row, rowIdx) => (
@@ -776,7 +782,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             </div>
           ))}
         </div>
-      </div>
 
       {/* SKELETON SHIMMER LOADING */}
       {isLoadingContent && (
@@ -857,7 +862,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         *::-webkit-scrollbar { display: none; }
         * { scrollbar-width: none; }
           `}</style>
-        </div>
       </div>
+    </div>
   )
 }

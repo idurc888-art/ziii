@@ -145,6 +145,24 @@ class ContentCatalogClass {
     return result
   }
 
+  // ─── Search Pool via Regex no grupo (M3U group-title) ──
+  searchByGroup(cat: UICategory, regex: RegExp, count: number, opts: { allowReuse?: boolean } = {}): Channel[] {
+    const pool = this.getPool(cat)
+    const result: Channel[] = []
+    
+    for (const ch of pool) {
+      if (result.length >= count) break
+      if (!opts.allowReuse && this.usedIds.has(ch.id)) continue
+      
+      if (regex.test(ch.group || '')) {
+        result.push(ch)
+        if (!opts.allowReuse) this.usedIds.add(ch.id)
+      }
+    }
+    
+    return result
+  }
+
   // ─── Pick sem repetir (dedup global entre páginas) ──
   // excludeLocal: IDs já usados nesta página (para não repetir dentro da mesma)
   pickBest(
