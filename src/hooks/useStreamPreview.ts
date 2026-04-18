@@ -10,6 +10,7 @@ interface PreviewOptions {
   previewDuration?: number
   seekToMs?: number
   fadeDuration?: number
+  onStopped?: (currentTimeMs: number) => void  // chamado quando preview para (para salvar offset)
 }
 
 export type PreviewState = 'idle' | 'loading' | 'playing' | 'error'
@@ -18,12 +19,12 @@ export type PreviewState = 'idle' | 'loading' | 'playing' | 'error'
 const PLAYER_IDS = ['av-hero-player-a', 'av-hero-player-b']
 
 function pickPreviewUrl(ch: Channel): string {
-  const order: Array<Channel['activeStream']['quality']> = ['SD', 'UNKNOWN', 'HD', 'FHD', '4K']
-  for (const q of order) {
-    const s = ch.streams.find(s => s.quality === q)
-    if (s) return s.url
-  }
-  return ch.activeStream.url
+  const sd = ch.streams?.find(s => 
+    (s.quality && s.quality.toUpperCase() === 'SD') ||
+    (s.label && s.label.toUpperCase().includes('SD'))
+  )
+  const stream = sd || ch.activeStream || ch.streams?.[0]
+  return stream?.url || ''
 }
 
 function isVOD(ch: Channel): boolean {
@@ -54,6 +55,8 @@ export function useStreamPreview(
   const activeIdRef  = useRef('')
   const idleTimer    = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const optsRef      = useRef(opts)
+  optsRef.current    = opts  // sempre atualizado para cleanup acessar onStopped
 
   const getAvplay = () => (window as any).webapis?.avplay
 
@@ -72,6 +75,7 @@ export function useStreamPreview(
     closeSlot(inactiveSlot)
 
     const url = pickPreviewUrl(ch)
+    if (!url) return
     try {
       avplay.open(url)
       avplay.setDisplayRect(0, 0, 1, 1) // invisível
@@ -99,9 +103,19 @@ export function useStreamPreview(
   }
 
   // ─── Cleanup geral ────────────────────────────────
-  const cleanup = () => {
+  const cleanup = (saveOffset = true) => {
     clearTimeout(idleTimer.current)
     clearTimeout(previewTimer.current)
+    // Salvar offset antes de parar (se callback configurado)
+    if (saveOffset && optsRef.current.onStopped) {
+      const avplay = getAvplay()
+      if (avplay) {
+        try {
+          const currentMs = avplay.getCurrentTime()
+          if (currentMs > 0) optsRef.current.onStopped(currentMs)
+        } catch {}
+      }
+    }
     setIsVideoVisible(false)
     setState('idle')
     closeSlot(0)
@@ -141,8 +155,18 @@ export function useStreamPreview(
       if (previewDuration > 0) {
         previewTimer.current = setTimeout(() => {
           if (activeIdRef.current !== channelId) return
+          // Salvar offset antes de parar
+          if (optsRef.current.onStopped) {
+            const av = getAvplay()
+            if (av) {
+              try {
+                const currentMs = av.getCurrentTime()
+                if (currentMs > 0) optsRef.current.onStopped(currentMs)
+              } catch {}
+            }
+          }
           setIsVideoVisible(false)
-          setTimeout(cleanup, fadeDuration)
+          setTimeout(() => cleanup(false), fadeDuration) // false = já salvamos acima
         }, previewDuration)
       }
     }
@@ -157,6 +181,10 @@ export function useStreamPreview(
     } else {
       closeSlot(slot)
       const url = pickPreviewUrl(ch)
+      if (!url) {
+        setState('error')
+        return
+      }
       try {
         avplay.open(url)
         avplay.setDisplayRect(0, 0, window.screen.width, window.screen.height)

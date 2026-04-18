@@ -8,6 +8,7 @@ interface HistoryEntry {
   lastWatched: number   // timestamp ms
   duration?: number     // duração assistida (futuro)
   category?: string     // categoria do canal
+  heroOffsetMs?: number // posição de seek para previews (hero + cards)
 }
 
 const STORAGE_KEY = 'ziiiTV_history'
@@ -96,4 +97,31 @@ export function wasWatched(channelName: string): boolean {
 export function clearHistory(): void {
   localStorage.removeItem(STORAGE_KEY)
   console.log('[History] cleared')
+}
+
+// ─── Hero / Card Preview Offset ─────────────────────────────────────────────
+
+/**
+ * Retorna o offset salvo para preview de hero/card.
+ * Se nunca assistiu, retorna 0 (começa do início).
+ */
+export function getHeroOffset(channelName: string): number {
+  const all = getAll()
+  const entry = all[channelName]
+  return entry?.heroOffsetMs ?? 0
+}
+
+/**
+ * Salva o offset de preview para retomar na próxima visita.
+ */
+export function saveHeroOffset(channelName: string, offsetMs: number): void {
+  const all = getAll()
+  const existing = all[channelName]
+
+  all[channelName] = {
+    ...(existing || { plays: 0, lastWatched: Date.now() }),
+    heroOffsetMs: offsetMs,
+  }
+
+  saveAll(all)
 }

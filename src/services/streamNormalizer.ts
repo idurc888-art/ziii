@@ -18,19 +18,18 @@ export function detectQuality(name: string): StreamQuality {
 
 export function cleanChannelName(raw: string): string {
   return raw
-    // Remove prefixos tipo |||BR|||, |BR|, [BR], {BR}
     .replace(/\|{2,}[^|]+\|{2,}/g, '')
     .replace(/\[[^\]]*\]/g, '')
     .replace(/\{[^}]*\}/g, '')
-    // Remove (xxx) parênteses que costumam conter metadados e codecs
     .replace(/\([^)]*\)/g, '')
-    // Remove sufixos de qualidade e codecs comuns
-    .replace(/\b(4K|UHD|2160[Pp]?|FHD|FULL[\s.-]?HD|1080[Pp]?|HD|720[Pp]?|SD|480[Pp]?|360[Pp]?|H\.?265|HEVC|VOD|LEG|DUB|PT-BR|VIP|PREMIUM)\b/gi, '')
-    // Remove separadores e lixo
-    .replace(/[|_.\-–—]+/g, ' ')
+    .replace(/\b(4K|UHD|2160[Pp]?|FHD|FULL[\s.-]?HD|1080[Pp]?|HD|720[Pp]?|SD|480[Pp]?|360[Pp]?|H\.?265|H\.?264|HEVC|AVC|VOD|LEG|DUB|DUBLADO|LEGENDADO|PT-BR|BR|VIP|PREMIUM|PLUS)\b/gi, '')
+    .replace(/\b(CH|CANAL)?\s*\d{1,4}\b/gi, '')
+    .replace(/\b(19|20)\d{2}\b/g, '')
+    .replace(/\b(O|A|THE|EL|LA)\s+(FILME|MOVIE|SERIE|SERIES?|TEMPORADA|SEASON|EPISODIO|EPISODE)\b/gi, '')
+    .replace(/\b(S|T|EP|PARTE|PART|VOL)\s*\d+\b/gi, '')
+    .replace(/[|_.\-–—:]+/g, ' ')
     .replace(/\s{2,}/g, ' ')
     .trim()
-    // Capitaliza primeira letra de cada palavra
     .replace(/\b\w/g, c => c.toUpperCase())
 }
 

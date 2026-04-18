@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useChannelsStore } from './store/channelsStore'
 import DebugOverlay from './components/DebugOverlay'
-const SHOW_DEBUG = false
+const SHOW_DEBUG = true
 import PlayerScreen from './screens/PlayerScreen/PlayerScreen'
 import SplashScreen from './screens/SplashScreen/SplashScreen'
 import ProfileScreen from './screens/ProfileScreen/ProfileScreen'
@@ -32,10 +32,10 @@ export default function App() {
     loadFromUrl(lastUrl)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Inicializar Catálogo Enterprise ────────────────────────────────────────
+  // ─── Aquecimento TMDB (init já ocorre dentro do store antes do setState) ────
   useEffect(() => {
-    if (Object.keys(normalizedGroups).length > 0) {
-      ContentCatalog.init(normalizedGroups)
+    const hasRealData = Object.values(normalizedGroups).some(arr => arr.length > 0)
+    if (hasRealData) {
       ContentCatalog.warmup()
     }
   }, [normalizedGroups])

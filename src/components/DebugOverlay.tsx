@@ -12,7 +12,7 @@ const BATCH_INTERVAL = 100 // ms
 
 export default function DebugOverlay() {
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const [visible, setVisible] = useState(true)
+  const [isOpen, setIsOpen] = useState(false)
   const logsRef = useRef<LogEntry[]>([])
   const batchRef = useRef<LogEntry[]>([])
   const timerRef = useRef<any>(undefined)
@@ -82,11 +82,17 @@ export default function DebugOverlay() {
     // Teclas de controle
     const onKey = (e: KeyboardEvent) => {
       // F1 ou botão vermelho (403) = toggle
+      // F1 = toggle overlay
       if (e.key === 'F1' || e.keyCode === 403) {
         e.preventDefault()
-        setVisible(v => !v)
+        setIsOpen((v: boolean) => !v)
       }
-      // F2 ou botão verde (404) = limpar
+      // F2 = limpar logs
+      if (e.key === 'F1' || e.keyCode === 403) {
+        e.preventDefault()
+        setIsOpen(prev => !prev)
+      }
+      // F2 = limpar logs
       if (e.key === 'F2' || e.keyCode === 404) {
         e.preventDefault()
         logsRef.current = []
@@ -105,62 +111,88 @@ export default function DebugOverlay() {
     }
   }, [])
 
-  if (!visible) {
+  // Botão retraído (lateral direita)
+  if (!isOpen) {
     return (
       <div style={{
         position: 'fixed',
-        top: '10px',
-        right: '10px',
-        background: 'rgba(0,0,0,0.7)',
+        top: '50%',
+        right: 0,
+        transform: 'translateY(-50%)',
+        background: 'rgba(0,0,0,0.8)',
         color: '#0f0',
-        padding: '8px 12px',
-        borderRadius: '4px',
-        fontSize: '12px',
+        padding: '20px 8px',
+        fontSize: '14px',
         zIndex: 9999,
-        pointerEvents: 'none'
-      }}>
-        Debug: OFF (F1)
+        cursor: 'pointer',
+        borderTopLeftRadius: '8px',
+        borderBottomLeftRadius: '8px',
+        writingMode: 'vertical-rl',
+        textOrientation: 'mixed',
+        fontWeight: 'bold',
+        border: '2px solid #0f0',
+        borderRight: 'none'
+      }} onClick={() => setIsOpen(true)}>
+        DEBUG LOGS ({logs.length})
       </div>
     )
   }
 
+  // Painel aberto (lateral direita)
   return (
     <div style={{
       position: 'fixed',
       top: 0,
       right: 0,
-      width: '500px',
+      width: '400px',
       height: '100vh',
-      background: 'rgba(0, 0, 0, 0.92)',
-      borderLeft: '2px solid #0f0',
+      background: 'rgba(0,0,0,0.95)',
+      color: '#0f0',
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      zIndex: 9999,
       display: 'flex',
       flexDirection: 'column',
-      zIndex: 9999,
-      pointerEvents: 'none',
-      fontFamily: 'monospace'
+      borderLeft: '2px solid #0f0',
+      animation: 'slideInRight 200ms ease-out'
     }}>
-      {/* Header */}
+      <style>{`
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
+        }
+      `}</style>
+      
       <div style={{
-        padding: '8px 12px',
-        background: '#0f0',
-        color: '#000',
-        fontSize: '12px',
-        fontWeight: 'bold',
+        padding: '10px',
+        background: '#000',
+        borderBottom: '1px solid #0f0',
         display: 'flex',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        alignItems: 'center'
       }}>
-        <span>DEBUG OVERLAY</span>
-        <span>F1:Hide F2:Clear</span>
+        <span style={{ fontWeight: 'bold' }}>DEBUG LOGS ({logs.length})</span>
+        <button 
+          onClick={() => setIsOpen(false)}
+          style={{
+            background: '#0f0',
+            color: '#000',
+            border: 'none',
+            padding: '4px 12px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            borderRadius: '4px'
+          }}>
+          FECHAR
+        </button>
       </div>
 
-      {/* Logs */}
       <div 
         ref={scrollRef}
         style={{
           flex: 1,
-          overflow: 'auto',
-          padding: '8px',
-          fontSize: '11px',
+          overflowY: 'auto',
+          padding: '10px',
           lineHeight: '1.4'
         }}
       >
@@ -187,7 +219,6 @@ export default function DebugOverlay() {
         ))}
       </div>
 
-      {/* Footer */}
       <div style={{
         padding: '6px 12px',
         background: '#111',
@@ -195,7 +226,7 @@ export default function DebugOverlay() {
         fontSize: '10px',
         borderTop: '1px solid #333'
       }}>
-        {logs.length}/{MAX_LOGS} logs
+        {logs.length}/{MAX_LOGS} logs • F1: Toggle • F2: Clear
       </div>
     </div>
   )

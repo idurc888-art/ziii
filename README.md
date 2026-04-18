@@ -10,31 +10,40 @@ App IPTV para Samsung Tizen 4.0+ (TV UN50RU7100GXZD) que carrega playlists M3U, 
 - Shaka Player (HLS/DASH) + AVPlay (fallback .ts)
 - Zustand + Web Worker (fallback thread principal)
 
-## Status Atual (15/04/2026 10:33)
-✅ **Fase 1 COMPLETA** — Stack validada na TV real
-- React monta e renderiza
-- Playlist carrega (fetch + parse funcionam)
-- **Cache persiste entre sessões** (IndexedDB validado)
-- DebugOverlay implementado (painel lateral com logs em tempo real)
+## Status Atual (18/04/2026 10:02)
+✅ **FASE 2 COMPLETA** — Home organizada por streaming + zero duplicatas
+- Layout Netflix-like funcionando na TV
+- Hero banner com 5 slides (Stranger Things primeiro)
+- **Home organizada por streaming**: Netflix, Amazon, HBO, Disney+ (filmes e séries separados)
+- **Limpeza agressiva de nomes**: remove anos, "O Filme", "Parte X", etc
+- **DebugOverlay lateral retrátil**: F1 toggle, F2 limpar
+- Descrição abaixo do card focado (3 linhas, Inter font, largura 55%)
+- Preview da próxima row visível
+- Cache persiste entre sessões (IndexedDB validado)
 - Navegação D-pad (Enter, Back, F1, F2)
-- **Arquitetura enterprise limpa** (singleton DB, idempotência, feature flags)
-
-✅ **Arquitetura Enterprise (15/04/2026)**
-- Singleton `dbClient.ts` - uma instância de DB por sessão
-- Idempotência total - URL já carregada retorna da memória
-- Feature flag `DEBUG` - testes nativos só em modo debug
-- Logs limpos - apenas estados essenciais (cache check/hit/miss/ready)
-- Zero ruído - sem reaberturas de DB, sem reprocessamento
-
-🎯 **Próximo passo:** Validar Player (Shaka + AVPlay) antes de implementar layout
 
 ## Decisões Técnicas Críticas
 1. **Vite 4 em vez de Vite 8** — Rolldown não gera código compatível com Chromium 56/63
 2. **Plugin-legacy sem viteSingleFile** — conflito entre os dois, arquivos separados funcionam
 3. **IndexedDB nativo singleton** — lib `idb` não persistia dados, API nativa com singleton funciona
 4. **Web Worker fallback** — `type: 'module'` não suportado, parse no thread principal
-5. **DebugOverlay** — painel lateral na TV para ver logs sem Web Inspector
+5. **DebugOverlay lateral retrátil** — menu na lateral direita, abre/fecha com F1 ou click
 6. **Arquitetura enterprise** — singleton DB, idempotência, feature flags, logs limpos
+7. **Limpeza agressiva de nomes** — remove anos, artigos, qualidade, codecs para eliminar duplicatas
+8. **Home por streaming** — organiza filmes/séries por Netflix, Amazon, HBO, Disney+
+
+## Organização da Home
+```
+🎬 Netflix Filmes
+📺 Netflix Séries
+🎥 Amazon Filmes
+🍿 Amazon Séries
+🎭 HBO Filmes
+🎪 HBO Séries
+✨ Disney+ Filmes
+🏰 Disney+ Séries
+🔥 Continuar Assistindo (último)
+```
 
 ## Referência de Layout
 `/home/carneiro888/Documentos/zikualdo/Telvix/LEGACY_SVELTE_TELVIX/` — projeto Svelte que funcionava na TV, layout Netflix-like com:
@@ -52,14 +61,16 @@ App IPTV para Samsung Tizen 4.0+ (TV UN50RU7100GXZD) que carrega playlists M3U, 
 - `vite.config.ts` — Vite 4 + plugin-legacy
 - `deploy.sh` — build + package + install na TV
 - `public/config.xml` — manifest Tizen com CSP permissivo
-- `src/components/DebugOverlay.tsx` — painel de debug na TV
+- `src/components/DebugOverlay.tsx` — menu lateral retrátil de debug
 - `src/services/dbClient.ts` — singleton IndexedDB
 - `src/services/playlistService.ts` — idempotência + feature flag DEBUG
+- `src/services/streamNormalizer.ts` — limpeza agressiva de nomes + dedup
+- `src/services/contentSelector.ts` — organiza home por streaming
 - `src/store/channelsStore.ts` — estados explícitos + proteção contra reprocessamento
 
 ## Próximos Passos
-1. **Validar Player** (Shaka + AVPlay) na TV
-2. Implementar layout Telvix (sidebar + topbar + hero)
-3. Sistema de navegação D-pad (4 zonas)
-4. Carrosséis horizontais com scroll automático
-5. Otimizações de performance
+1. **Implementar tela de Canais** (TV ao vivo separada da home)
+2. **Melhorar detecção de streaming** (usar group-title da playlist)
+3. **Adicionar filtros por gênero** (TMDB genres)
+4. **Implementar busca** (search screen)
+5. **Otimizações de performance** (virtualização de listas)

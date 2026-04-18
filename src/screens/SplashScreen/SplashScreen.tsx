@@ -11,9 +11,9 @@ export default function SplashScreen({ onDone }: Props) {
   onDoneRef.current = onDone
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase('hold'), 400)
-    const t2 = setTimeout(() => setPhase('out'),  2400)
-    const t3 = setTimeout(() => onDoneRef.current(), 2900)
+    const t1 = setTimeout(() => setPhase('hold'), 200)
+    const t2 = setTimeout(() => setPhase('out'),  800)
+    const t3 = setTimeout(() => onDoneRef.current(), 1000)
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
   }, [])
 

@@ -54,9 +54,16 @@ class ContentCatalogClass {
     this.usedIds.clear()
     this.warmupDone = false
 
+    let totalChannels = 0
     for (const [cat, channels] of Object.entries(groups)) {
       this.catalog.set(cat as UICategory, [...channels])
+      totalChannels += channels.length
     }
+    
+    console.log(`[ContentCatalog] Inicializado com ${totalChannels} canais únicos`)
+    console.log(`[ContentCatalog] Distribuição:`, 
+      Object.entries(groups).map(([k, v]) => `${k}:${v.length}`).join(', ')
+    )
   }
 
   // ─── Warmup: enriquece com TMDB em background ────
@@ -73,6 +80,8 @@ class ContentCatalogClass {
     // Fase 1: top 100 filmes + top 100 séries (garantir dados na home)
     const filmes  = this.catalog.get('filmes')?.slice(0, 100) ?? []
     const series  = this.catalog.get('series')?.slice(0, 100) ?? []
+
+    console.log(`[ContentCatalog] Warmup: ${filmes.length} filmes, ${series.length} séries`)
 
     await Promise.all([
       this._enrichCategory('filmes', filmes),

@@ -36,7 +36,41 @@ function buildRows(rowsData: Partial<ContentRow>[]): ContentRow[] {
     }))
 }
 
+// ─── Centralized TMDB enrichment for hero + rows ────────────────────
+async function enrichRowsAndHero(
+  heroChannels: Channel[],
+  rows: ContentRow[],
+  heroTmdbBase?: Map<string, TMDBResult | null>,
+): Promise<{ heroTmdb: Map<string, TMDBResult | null>; rows: ContentRow[] }> {
+  const heroTmdb = heroTmdbBase ? new Map(heroTmdbBase) : new Map<string, TMDBResult | null>()
+
+  const allChannels = [
+    ...heroChannels,
+    ...rows.flatMap(r => r.channels),
+  ]
+  const uniqueNames = Array.from(new Set(allChannels.map(ch => ch.name)))
+
+  const { enrichBatch } = await import('./tmdbService')
+  const tmdbResults = await enrichBatch(uniqueNames, 30, 300)
+
+  for (const row of rows) {
+    for (const ch of row.channels) {
+      const tmdb = tmdbResults.get(ch.name) ?? ch.tmdb ?? null
+      row.tmdb.set(ch.name, tmdb)
+    }
+  }
+
+  for (const ch of heroChannels) {
+    if (ch.name === 'ziiiTV') continue
+    const tmdb = tmdbResults.get(ch.name) ?? ch.tmdb ?? null
+    if (tmdb) heroTmdb.set(ch.name, tmdb)
+  }
+
+  return { heroTmdb, rows }
+}
+
 export async function buildHomeContent(_groups: NormalizedGroups): Promise<ScreenContent> {
+  console.log('[ContentSelector] buildHomeContent iniciado')
   ContentCatalog.resetUsed()
 
   // ─── Extrair histórico real ───
@@ -64,28 +98,87 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
   // ↑ hack seguro para adicionar ao usedIds indiretamente no ContentCatalog.
   // Melhor abordagem explícita se pudéssemos, mas no ContentCatalog o pickMix/pickBest já o faz.
 
-  // Hero: mix filmes + séries mais bem avaliados
-  const heroChannels = [
-    { id: 'ziii', name: 'ziiiTV', url: '', logo: '', group: 'Ziii', streams: [], activeStream: { url: '', quality: 'UNKNOWN', label: 'Padrão' }, variantCount: 1 } as unknown as Channel,
-    ...ContentCatalog.pickMix(['filmes', 'series'], 4, 70)
-  ]
+  // Hero: Stranger Things fixo como primeiro slide
+  const strangerThings: Channel = {
+    id: 'stranger-things',
+    name: 'Stranger Things',
+    url: '',
+    logo: '',
+    group: 'Séries',
+    streams: [],
+    activeStream: { url: '', quality: 'FHD', label: 'Trailer' },
+    variantCount: 1,
+    tmdb: {
+      title: 'Stranger Things',
+      year: '2016',
+      rating: 8.7,
+      overview: 'Quando um garoto desaparece, a cidade toda participa nas buscas. Mas o que encontram são segredos, forças sobrenaturais e uma menina.',
+      poster: '',
+      backdrop: 'https://image.tmdb.org/t/p/w1280/56v2KjBlU4XaOv9rVYEQypROD7P.jpg',
+      tmdbId: 66732,
+      mediaType: 'tv',
+      trailerKey: 'b9EkMc79ZSU'
+    }
+  } as Channel
+  
+  let heroChannels = [strangerThings, ...ContentCatalog.pickBest('filmes', 4, { minScore: 0 })]
+  if (heroChannels.length === 1) {
+     const mix = ContentCatalog.pickMix(['filmes', 'series'], 4, 0);
+     if (mix.length > 0) heroChannels = [strangerThings, ...mix];
+  }
+
+  console.log('[ContentSelector] Hero channels:', heroChannels.length)
+
+  const allFilmes = ContentCatalog.getPool('filmes')
+  const allSeries = ContentCatalog.getPool('series')
+
+  // Detecta streaming pelo group-title
+  const detectStreaming = (ch: Channel): string => {
+    const g = (ch.group || '').toLowerCase()
+    if (g.includes('netflix')) return 'netflix'
+    if (g.includes('amazon') || g.includes('prime')) return 'amazon'
+    if (g.includes('hbo') || g.includes('max')) return 'hbo'
+    if (g.includes('disney')) return 'disney'
+    if (g.includes('paramount')) return 'paramount'
+    if (g.includes('apple')) return 'apple'
+    return 'outros'
+  }
+
+  // Agrupa filmes por streaming
+  const filmesPorStreaming: Record<string, Channel[]> = {}
+  for (const filme of allFilmes) {
+    const streaming = detectStreaming(filme)
+    if (!filmesPorStreaming[streaming]) filmesPorStreaming[streaming] = []
+    filmesPorStreaming[streaming].push(filme)
+  }
+
+  // Agrupa séries por streaming
+  const seriesPorStreaming: Record<string, Channel[]> = {}
+  for (const serie of allSeries) {
+    const streaming = detectStreaming(serie)
+    if (!seriesPorStreaming[streaming]) seriesPorStreaming[streaming] = []
+    seriesPorStreaming[streaming].push(serie)
+  }
 
   const rows = buildRows([
-    // 1- HISTÓRICO (manter como principal na Home antes do resto)
+    { type: 'portrait' as const, title: '🎬 Netflix ', titleAccent: 'Filmes', channels: (filmesPorStreaming.netflix || []).slice(0, 20) },
+    { type: 'portrait' as const, title: '📺 Netflix ', titleAccent: 'Séries', channels: (seriesPorStreaming.netflix || []).slice(0, 20) },
+    { type: 'portrait' as const, title: '🎥 Amazon ', titleAccent: 'Filmes', channels: (filmesPorStreaming.amazon || []).slice(0, 20) },
+    { type: 'portrait' as const, title: '🍿 Amazon ', titleAccent: 'Séries', channels: (seriesPorStreaming.amazon || []).slice(0, 20) },
+    { type: 'portrait' as const, title: '🎭 HBO ', titleAccent: 'Filmes', channels: (filmesPorStreaming.hbo || []).slice(0, 20) },
+    { type: 'portrait' as const, title: '🎪 HBO ', titleAccent: 'Séries', channels: (seriesPorStreaming.hbo || []).slice(0, 20) },
+    { type: 'portrait' as const, title: '✨ Disney+ ', titleAccent: 'Filmes', channels: (filmesPorStreaming.disney || []).slice(0, 20) },
+    { type: 'portrait' as const, title: '🏰 Disney+ ', titleAccent: 'Séries', channels: (seriesPorStreaming.disney || []).slice(0, 20) },
     {
-      type: 'wide',
+      type: 'wide' as const,
       title: '🔥 Continuar ',
       titleAccent: 'Assistindo',
       channels: mostWatchedPool
     },
-    { type: 'portrait', title: '⭐ Top ', titleAccent: 'Filmes', channels: ContentCatalog.pickBest('filmes', 20, { minScore: 60 }) },
-    { type: 'portrait', title: '🏆 Top ', titleAccent: 'Séries', channels: ContentCatalog.pickBest('series', 20, { minScore: 65 }) },
-    { type: 'portrait', title: '😂 ', titleAccent: 'Comédias', channels: ContentCatalog.pickByGenre('filmes', [35], 20) },
-    { type: 'portrait', title: '🍕 ', titleAccent: 'Variados', channels: ContentCatalog.pickMix(['filmes', 'series'], 20, 50) },
-    { type: 'portrait', title: '🖥️ ', titleAccent: '4K & UHD', channels: ContentCatalog.pickByGenre('filmes', [878, 28], 20) }, // proxy genérico pra 4k já que o catalogo é the moviedb
-    { type: 'portrait', title: '💥 ', titleAccent: 'Ação', channels: ContentCatalog.pickByGenre('filmes', [28, 12], 20) },
-    { type: 'portrait', title: '👻 ', titleAccent: 'Terror', channels: ContentCatalog.pickByGenre('filmes', [27, 53], 20) },
-  ])
+  ].filter(row => row.channels.length > 0)) // Remove rows vazias
+
+  console.log('[ContentSelector] Rows criadas:', rows.length)
+  rows.forEach((r, i) => console.log(`  Row ${i}: ${r.title}${r.titleAccent} (${r.channels.length} canais)`))
 
   const heroTmdb = new Map<string, TMDBResult | null>()
   for (const ch of heroChannels) {
@@ -101,28 +194,8 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
     }
   }
 
-  // ─── Força o Batch Enrich síncrono para esta página ───
-  const toEnrich = [
-    ...heroChannels,
-    ...rows.flatMap(r => r.channels)
-  ].map(ch => ch.name).filter((v, i, a) => a.indexOf(v) === i)
-
-  const { enrichBatch } = await import('./tmdbService')
-  const tmdbResults = await enrichBatch(toEnrich, 30, 300)
-
-  for (const row of rows) {
-    for (const ch of row.channels) {
-      if (tmdbResults.has(ch.name)) row.tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
-      else if (ch.tmdb) row.tmdb.set(ch.name, ch.tmdb)
-    }
-  }
-  for (const ch of heroChannels) {
-    if (ch.name !== 'ziiiTV' && tmdbResults.has(ch.name)) {
-      heroTmdb.set(ch.name, tmdbResults.get(ch.name) || null)
-    }
-  }
-
-  return { heroChannels, heroTmdb, rows }
+  const enriched = await enrichRowsAndHero(heroChannels, rows, heroTmdb)
+  return { heroChannels, heroTmdb: enriched.heroTmdb, rows: enriched.rows }
 }
 
 
@@ -164,25 +237,8 @@ export async function buildFilmesContent(_groups: NormalizedGroups): Promise<Scr
     heroTmdb.set(ch.name, ch.tmdb || null)
   }
 
-  const toEnrich = [
-    ...heroChannels,
-    ...rows.flatMap(r => r.channels)
-  ].map(ch => ch.name).filter((v, i, a) => a.indexOf(v) === i)
-
-  const { enrichBatch } = await import('./tmdbService')
-  const tmdbResults = await enrichBatch(toEnrich, 30, 300)
-
-  for (const row of rows) {
-    for (const ch of row.channels) {
-      if (tmdbResults.has(ch.name)) row.tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
-      else if (ch.tmdb) row.tmdb.set(ch.name, ch.tmdb)
-    }
-  }
-  for (const ch of heroChannels) {
-    if (tmdbResults.has(ch.name)) heroTmdb.set(ch.name, tmdbResults.get(ch.name) || null)
-  }
-
-  return { heroChannels, heroTmdb, rows }
+  const enriched = await enrichRowsAndHero(heroChannels, rows, heroTmdb)
+  return { heroChannels, heroTmdb: enriched.heroTmdb, rows: enriched.rows }
 }
 
 export async function buildSeriesContent(_groups: NormalizedGroups): Promise<ScreenContent> {
@@ -205,25 +261,8 @@ export async function buildSeriesContent(_groups: NormalizedGroups): Promise<Scr
     heroTmdb.set(ch.name, ch.tmdb || null)
   }
 
-  const toEnrich = [
-    ...heroChannels,
-    ...rows.flatMap(r => r.channels)
-  ].map(ch => ch.name).filter((v, i, a) => a.indexOf(v) === i)
-
-  const { enrichBatch } = await import('./tmdbService')
-  const tmdbResults = await enrichBatch(toEnrich, 30, 300)
-
-  for (const row of rows) {
-    for (const ch of row.channels) {
-      if (tmdbResults.has(ch.name)) row.tmdb.set(ch.name, tmdbResults.get(ch.name) || null)
-      else if (ch.tmdb) row.tmdb.set(ch.name, ch.tmdb)
-    }
-  }
-  for (const ch of heroChannels) {
-    if (tmdbResults.has(ch.name)) heroTmdb.set(ch.name, tmdbResults.get(ch.name) || null)
-  }
-
-  return { heroChannels, heroTmdb, rows }
+  const enriched = await enrichRowsAndHero(heroChannels, rows, heroTmdb)
+  return { heroChannels, heroTmdb: enriched.heroTmdb, rows: enriched.rows }
 }
 
 export async function buildTvContent(_groups: NormalizedGroups): Promise<ScreenContent> {

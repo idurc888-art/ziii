@@ -3,6 +3,7 @@ import type { Channel } from '../types/channel'
 import { mockGroups } from '../data/mockChannels'
 import { loadPlaylist, clearPlaylistCache } from '../services/playlistService'
 import { normalizeGroups, type UICategory } from '../services/categoryMapper'
+import { ContentCatalog } from '../services/contentCatalog'
 
 type LoadStatus = 
   | 'idle' 
@@ -83,6 +84,11 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
       
       // Pipeline nível 2: normalização
       const normalizedGroups = normalizeGroups(groups)
+
+      // Pipeline nível 3: inicializar catálogo ANTES de atualizar estado React
+      // Crítico: evita race condition onde HomeScreen.buildHomeContent roda
+      // antes do ContentCatalog.init() do App.tsx (child effects < parent effects)
+      ContentCatalog.init(normalizedGroups)
       
       // Persiste a URL para a próxima sessão
       localStorage.setItem('ziiiTV_lastUrl', url)

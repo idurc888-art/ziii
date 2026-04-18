@@ -11,7 +11,7 @@ export interface HeroSlide {
   badge?: string;
   backgroundImage: string;
   videoUrl?: string;
-  type: 'movie' | 'series' | 'live';
+  type: 'movie' | 'series' | 'live' | 'channel';
   tmdbId?: number; // Para conectar com TMDB/Youtube
   channel?: Channel; // Canal físico M3U para autoplay
 }
@@ -25,6 +25,11 @@ interface HeroBannerProps {
   previewOverrideChannel?: Channel | null;
   previewOverrideImage?: string;
   hideUI?: boolean;
+  heroAutoplay?: {
+    previewDuration: number
+    getSeekOffset: (ch: Channel) => number
+    onStopped: (ch: Channel, offsetMs: number) => void
+  }
 }
 
 export function HeroBanner({
@@ -36,7 +41,10 @@ export function HeroBanner({
   previewOverrideChannel,
   previewOverrideImage,
   hideUI = false,
+  heroAutoplay,
 }: HeroBannerProps) {
+  console.log('[HeroBanner] Render:', { slidesCount: slides.length, focused, autoPlayInterval })
+  
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(autoPlayInterval > 0);
 
@@ -50,15 +58,33 @@ export function HeroBanner({
   // Usa o channel do slide se não houver override
   const activeChannel = previewOverrideChannel || currentSlideValid?.channel || null;
   const nextSlideValid    = slides[(currentIndex + 1) % Math.max(slides.length, 1)];
+
+  // Hero autoplay: ativa para qualquer slide focado que tenha canal real e URL
+  const channelHasUrl = activeChannel && (activeChannel.activeStream?.url || activeChannel.streams?.length > 0);
+  const heroAutoplayActive = !!heroAutoplay && !!channelHasUrl && focused;
+
+  console.log('[HeroBanner] heroAutoplay:', heroAutoplay)
+  console.log('[HeroBanner] currentIndex:', currentIndex)
+  console.log('[HeroBanner] focused:', focused)
+  console.log('[HeroBanner] heroAutoplayActive:', heroAutoplayActive)
+
   const { videoStyle, backdropStyle, activePlayerId } = useStreamPreview(
     activeChannel,
     nextSlideValid?.channel || null,
-    true, // always true if the component expects to preview! Wait, if hideUI true, we are focused? Actually `true`
+    true,
     {
       idleDelay: 800,
-      previewDuration: 18000,
-      seekToMs: 270000,
       fadeDuration: 350,
+      ...(heroAutoplayActive && activeChannel ? {
+        seekToMs: heroAutoplay!.getSeekOffset(activeChannel),
+        previewDuration: heroAutoplay!.previewDuration,
+        onStopped: (offsetMs: number) => {
+          if (activeChannel) heroAutoplay!.onStopped(activeChannel, offsetMs)
+        },
+      } : {
+        previewDuration: 18000,
+        seekToMs: 270000,
+      }),
     }
   );
 
@@ -151,7 +177,15 @@ export function HeroBanner({
           break;
         case 'Enter':
           lastKeyPressRef.current = now;
-          if (onSelect && slides[currentIndex]) onSelect(slides[currentIndex]);
+          if (onSelect && slides[currentIndex]) {
+            // Força a liberação imediata do player nativo antes de transicionar de tela
+            const av = (window as any).webapis?.avplay;
+            if (av) {
+              try { av.stop(); } catch (e) {}
+              try { av.close(); } catch (e) {}
+            }
+            onSelect(slides[currentIndex]);
+          }
           break;
         case 'F1':
           lastKeyPressRef.current = now;
@@ -222,7 +256,14 @@ export function HeroBanner({
                 {slide.subtitle && <h2 className="hero-subtitle">{slide.subtitle}</h2>}
                 <p className="hero-description">{slide.description}</p>
                 <div className="hero-actions">
-                  <button className="hero-btn hero-btn-primary" onClick={() => onSelect?.(slides[currentIndex])}>▶ Assistir</button>
+                  <button className="hero-btn hero-btn-primary" onClick={() => {
+                    const av = (window as any).webapis?.avplay;
+                    if (av) {
+                      try { av.stop(); } catch (e) {}
+                      try { av.close(); } catch (e) {}
+                    }
+                    onSelect?.(slides[currentIndex])
+                  }}>▶ Assistir</button>
                   <button className="hero-btn hero-btn-secondary" onClick={() => onAddToList?.(slides[currentIndex])}>+ Minha Lista</button>
                 </div>
               </div>

@@ -79,6 +79,16 @@ interface Props {
   onShakaReady?:  (player: any) => void
 }
 
+function pickBestWatchStream(channel: Channel) {
+  const fhd = channel.streams?.find(s =>
+    s.quality === 'FHD' || s.label?.toUpperCase().includes('FHD')
+  )
+  const hd = channel.streams?.find(s =>
+    s.quality === 'HD' || s.label?.toUpperCase().includes('HD')
+  )
+  return fhd || hd || channel.activeStream || channel.streams?.[0]
+}
+
 export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevChannel, onShakaReady }: Props) {
 
   const [state, dispatch] = useReducer(reducer, INITIAL)
@@ -100,10 +110,10 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
   const inFlightRef   = useRef(false)
   const retryCountRef = useRef(0)
 
-  const [currentStream, setCurrentStream] = useState(channel.activeStream)
+  const [currentStream, setCurrentStream] = useState(() => pickBestWatchStream(channel))
   
   useEffect(() => {
-    setCurrentStream(channel.activeStream)
+    setCurrentStream(pickBestWatchStream(channel))
   }, [channel])
 
   const streamUrl = currentStream?.url || (channel as any).url || ''
@@ -186,30 +196,8 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
   const retryManual = useCallback(() => {
     retryCountRef.current = 0
     inFlightRef.current   = true
-    dispatch({ type: 'SET_STATUS', status: 'loading' })
-    startSlowTimer()
-    if (backend === 'avplay') {
-      if (!isAVPlayAvailable()) { setTimeout(() => dispatch({ type: 'SET_STATUS', status: 'playing' }), 300); return }
-      try { avplayStop() } catch (_) {}
-      avplayLoad(
-        streamUrl, 'av-player',
-        () => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) },
-        (msg) => { if (inFlightRef.current) attemptRetry(msg) }
-      )
-    } else {
-      const video = videoRef.current
-      if (!video) return
-      destroyPlayer()
-      initPlayer(video)
-        .then(async (player: any) => {
-          if (!inFlightRef.current) return
-          onShakaReady?.(player)
-          await loadStream(streamUrl)
-          if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' })
-        })
-        .catch((e: Error) => { if (inFlightRef.current) attemptRetry(e.message) })
-    }
-  }, [streamUrl, backend, attemptRetry, startSlowTimer])
+    attemptRetry(stateRef.current.error || 'Manual retry')
+  }, [attemptRetry])
 
   // ─── Player lifecycle ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -298,12 +286,17 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           e.preventDefault()
           if (s.osdVisible && s.focusZone === 'controls') {
             if (s.ctrlFocus === CTRL.SETTINGS) dispatch({ type: 'TOGGLE_QUALITIES' })
+            else if (s.ctrlFocus === CTRL.RW10) { try { avplay?.jumpBackward(10000) } catch (_) {} }
+            else if (s.ctrlFocus === CTRL.FF10) { try { avplay?.jumpForward(10000)  } catch (_) {} }
+            else if (s.ctrlFocus === CTRL.RW)   { try { avplay?.jumpBackward(30000) } catch (_) {} }
+            else if (s.ctrlFocus === CTRL.FF)   { try { avplay?.jumpForward(30000)  } catch (_) {} }
             else doToggle()
           } else if (s.osdVisible && s.focusZone === 'qualities') {
             const selected = channel.streams[s.qualityIdx]
-            if (selected) {
+            if (selected && selected.url !== currentStream?.url) {
               setCurrentStream(selected)
-              channel.activeStream = selected // hot swap persist
+              dispatch({ type: 'TOGGLE_QUALITIES' })
+            } else {
               dispatch({ type: 'TOGGLE_QUALITIES' })
             }
           } else {

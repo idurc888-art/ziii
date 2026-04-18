@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { UICategory } from '../../services/categoryMapper'
 import type { ContentRow, ScreenContent } from '../../services/contentSelector'
 import type { TMDBResult } from '../../services/tmdbService'
@@ -9,7 +9,7 @@ import {
   buildSeriesContent,
   buildTvContent
 } from '../../services/contentSelector'
-import { recordPlay } from '../../services/historyService'
+import { recordPlay, getHeroOffset, saveHeroOffset } from '../../services/historyService'
 import { HeroBanner, mockHeroSlides, type HeroSlide } from '../../components/HeroBanner'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ function loadNavState(): { focusZone?: string; contentRow?: number; contentCols?
 
 // Escala proporcional ao viewport — garante visual idêntico em 1280, 1366 e 1920px
 // Base de design: 1920px. Cards de 317px nessa base.
-const VW = typeof window !== 'undefined' ? window.innerWidth / 1920 : 1
+// VW is now a reactive state inside the component — see `vw` below
 
 export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const saved = useRef(loadNavState()).current
@@ -114,13 +114,23 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const [sidebarIdx,  setSidebarIdx]  = useState(0)
   const [topbarIdx,   setTopbarIdx]   = useState(0)
   const [contentRow,  setContentRow]  = useState(saved?.contentRow ?? 0)
-  const [contentCols, setContentCols] = useState<number[]>(saved?.contentCols ?? [0,0,0,0,0,0,0,0])
+  const [contentCols, setContentCols] = useState<number[]>(saved?.contentCols ?? [])
   const [showExit,    setShowExit]    = useState(false)
   const [exitFocus,   setExitFocus]   = useState(0)
   const [activeView,  setActiveView]  = useState<DashboardView>((saved?.activeView as DashboardView) || 'home')
   const [isLoadingContent, setIsLoadingContent] = useState(false)
   const [content, setContent] = useState<ScreenContent | null>(null)
   const [heroSlides, setHeroSlides] = useState<HeroSlide[]>(mockHeroSlides)
+
+  // ─── Responsive viewport scale (base 1920px) ───────────────────────
+  const [vw, setVw] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth / 1920 : 1
+  )
+  useEffect(() => {
+    const onResize = () => setVw(window.innerWidth / 1920)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   // ─── Load content ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -138,10 +148,30 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         setContent(data)
         setIsLoadingContent(false)
         setContentRow(0)
-        setContentCols(new Array(data.rows.length).fill(0))
+        setContentCols(prev => {
+          if (prev.length === data.rows.length) return prev
+          return new Array(data.rows.length).fill(0)
+        })
 
         if (activeView === 'home') {
-          setHeroSlides(mockHeroSlides)
+          // Hero da home a partir de data.heroChannels + tmdb real
+          setHeroSlides(
+            data.heroChannels.map((ch, idx) => {
+              const tmdb = data.heroTmdb.get(ch.name)
+              return {
+                id: `home-${idx}`,
+                title: tmdb?.title || ch.name,
+                subtitle: ch.group || 'destaque',
+                description: tmdb?.overview || `Assista ${ch.name} com a melhor qualidade na ziiiTV.`,
+                badge: 'Em destaque',
+                backgroundImage: tmdb?.backdrop
+                  ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop}`
+                  : (ch.logo || `https://picsum.photos/1920/1080?random=${idx + 300}`),
+                type: 'channel',
+                channel: ch,
+              } as HeroSlide
+            })
+          )
         } else if (activeView === 'live') {
           setHeroSlides(data.heroChannels.map((ch, idx) => ({
             id: `slide-${idx}`,
@@ -178,6 +208,23 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   }, [groups, activeView])
 
   const rows: ContentRow[] = content?.rows || []
+  
+  console.log('[HomeScreen] Render:', { 
+    contentExists: !!content, 
+    rowsCount: rows.length,
+    heroSlidesCount: heroSlides.length,
+    focusZone,
+    activeView
+  })
+
+  // Netflix-style hero autoplay configs
+  const heroAutoplayConfig = useMemo(() => ({
+    previewDuration: 30_000,
+    getSeekOffset: (ch: Channel) => getHeroOffset(ch.name),
+    onStopped: (ch: Channel, offsetMs: number) => {
+      saveHeroOffset(ch.name, offsetMs)
+    },
+  }), [])
 
   const [liveTmdbData, setLiveTmdbData] = useState<Record<string, TMDBResult | null>>({})
   const [debouncedPreview, setDebouncedPreview] = useState<Channel | null>(null)
@@ -543,6 +590,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             autoPlayInterval={0}
             focused={focusZone === 'hero'}
             hideUI={focusZone === 'content'}
+            heroAutoplay={activeView === 'home' ? heroAutoplayConfig : undefined}
             previewOverrideChannel={focusZone === 'content' ? debouncedPreview : undefined}
             previewOverrideImage={focusZone === 'content' && debouncedPreview && liveTmdbData[debouncedPreview.name]?.backdrop ? `https://image.tmdb.org/t/p/w1280${liveTmdbData[debouncedPreview.name]?.backdrop}` : undefined}
             onSelect={(slide) => {
@@ -558,6 +606,22 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         </div>
 
         {/* ROWS — scroll próprio, por cima do background */}
+        {rows.length === 0 ? (
+          <div style={{
+            position: 'absolute',
+            top: '50%', left: '50%',
+            transform: 'translate(-50%, -50%)',
+            color: '#fff',
+            fontSize: 24,
+            textAlign: 'center',
+            zIndex: 100
+          }}>
+            <div>Carregando conteúdo...</div>
+            <div style={{ fontSize: 16, color: '#888', marginTop: 12 }}>
+              {Object.keys(groups).length === 0 ? 'Aguardando playlist...' : 'Processando canais...'}
+            </div>
+          </div>
+        ) : null}
         <div
           ref={rowsWrapRef}
           style={{
@@ -565,31 +629,43 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             top: 0, left: 0, right: 0, bottom: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
-            paddingTop: focusZone === 'content' ? '80px' : 'calc(100vh - 220px)',
+            paddingTop: focusZone === 'content' ? '100px' : 'calc(100vh - 220px)',
             transition: 'padding-top 520ms cubic-bezier(0.25,1,0.5,1)',
             scrollBehavior: 'smooth',
             zIndex: 15,
-            background: focusZone === 'content' ? 'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.8) 35%, rgba(0,0,0,1) 100%)' : 'transparent',
+            background: focusZone === 'content' ? 'linear-gradient(to bottom, rgba(20,20,20,0.95) 0%, rgba(10,10,10,1) 20%, #000 100%)' : 'transparent',
           }}
         >
-          {rows.map((row, rowIdx) => (
-            <div
-              ref={el => { rowRefs.current[rowIdx] = el }}
-              key={rowIdx}
-              style={{ padding: '24px 0', overflow: 'visible' }}
-            >
-              <div style={{
-                padding: '0 80px', display: 'flex', justifyContent: 'space-between',
-                alignItems: 'center', marginBottom: 16,
-              }}>
+          {rows.map((row, rowIdx) => {
+            const isRowFocused = focusZone === 'content' && contentRow === rowIdx
+            // Espaço mínimo para descrição + máxima prévia da próxima row
+            const extraPadding = isRowFocused ? 0 : 0
+            
+            return (
+              <div
+                ref={el => { rowRefs.current[rowIdx] = el }}
+                key={rowIdx}
+                style={{
+                  padding: '24px 0',
+                  paddingBottom: `${24 + extraPadding}px`,
+                  overflow: 'visible',
+                  // Primeira row: padding mínimo para ficar mais perto do topo
+                  // Demais rows: padding normal para quando scrollarem para o topo
+                  paddingTop: rowIdx === 0 ? '10px' : '100px'
+                }}
+              >
                 <div style={{
-                  fontSize: 22, fontWeight: 800, textTransform: 'lowercase',
-                  color: focusZone === 'content' && contentRow === rowIdx ? '#fff' : 'rgba(255,255,255,0.5)',
-                  transition: 'color 200ms',
+                  padding: '0 80px', display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'center', marginBottom: 16,
                 }}>
-                  {row.title}<span style={{ color: ACCENT }}>{row.titleAccent}</span>
+                  <div style={{
+                    fontSize: 22, fontWeight: 800, textTransform: 'lowercase',
+                    color: isRowFocused ? '#fff' : 'rgba(255,255,255,0.5)',
+                    transition: 'color 200ms',
+                  }}>
+                    {row.title}<span style={{ color: ACCENT }}>{row.titleAccent}</span>
+                  </div>
                 </div>
-              </div>
 
               {row.type === 'grid' ? (
                 <div style={{
@@ -625,11 +701,11 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
               ) : (() => {
                 // ─── Layout Netflix: card focado wide, demais portrait ───
                 // Dimensões em px escaladas pelo viewport (base 1920px)
-                const CARD_W   = Math.round(317 * VW)   // portrait
-                const CARD_H   = Math.round(475 * VW)   // altura fixa
-                const WIDE_W   = Math.round(840 * VW)   // wide no foco
-                const GAP      = Math.round(16  * VW)
-                const LEFT_PAD = Math.round(80  * VW)
+                const CARD_W   = Math.round(317 * vw)   // portrait
+                const CARD_H   = Math.round(475 * vw)   // altura fixa
+                const WIDE_W   = Math.round(840 * vw)   // wide no foco
+                const GAP      = Math.round(16  * vw)
+                const LEFT_PAD = Math.round(80  * vw)
 
                 const isRowFocused = focusZone === 'content' && contentRow === rowIdx
                 const focusedIndex = contentCols[rowIdx] || 0
@@ -642,10 +718,10 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   <div style={{
                     position: 'relative', width: '100%',
                     height: CARD_H + 40,
-                    paddingTop: Math.round(12 * VW), overflow: 'hidden',
+                    paddingTop: Math.round(12 * vw), overflow: 'hidden',
                   }}>
                     <div style={{
-                      position: 'absolute', left: LEFT_PAD, top: Math.round(12 * VW),
+                      position: 'absolute', left: LEFT_PAD, top: Math.round(12 * vw),
                       display: 'flex', flexDirection: 'row',
                       alignItems: 'flex-start',
                       transform: `translate3d(${cameraShift}px, 0, 0)`,
@@ -674,7 +750,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                             width: cardW, height: CARD_H, flexShrink: 0,
                             marginRight: GAP,
                             zIndex: isFocused ? 10 : 1,
-                            borderRadius: Math.round(8 * VW), cursor: 'pointer', overflow: 'hidden',
+                            borderRadius: Math.round(8 * vw), cursor: 'pointer', overflow: 'hidden',
                             boxShadow: isFocused ? FOCUS_GLOW : 'none',
                             border: isFocused ? FOCUS_BORDER : '1px solid rgba(255,255,255,0.08)',
                             background: '#111',
@@ -698,22 +774,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                               background: 'linear-gradient(transparent, rgba(0,0,0,0.92))',
                               zIndex: 3,
                             }} />
-                            {/* T\u00edtulo */}
-                            <div style={{
-                              position: 'absolute', bottom: 14, left: 14, right: 14,
-                              zIndex: 4,
-                            }}>
-                              <div style={{
-                                fontSize: 17, fontWeight: 800,
-                                fontFamily: "'Barlow Condensed', 'Outfit', sans-serif",
-                                textTransform: 'uppercase',
-                                overflow: 'hidden', textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                textShadow: '0 2px 10px rgba(0,0,0,0.99)',
-                                color: '#fff',
-                                paddingRight: isFocused && ch.logo ? 64 : 0,
-                              }}>{ch.name}</div>
-                            </div>
                             {/* Logo do Canal/Streaming (visivel apenas no card Wide) */}
                             {isFocused && ch.logo && (
                               <img src={ch.logo} style={{
@@ -749,38 +809,66 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                       })}
                     </div>
 
-                    {/* Metadata overlay */}
-                    {isRowFocused && (() => {
-                      const fch  = row.channels[focusedIndex]
-                      if (!fch) return null
-                      const tmdb = row.tmdb?.get(fch.name)
-                      return (
-                        <div key={fch.name} style={{
-                          position: 'absolute', left: 80, top: CARD_H + 24,
-                          width: 580, animation: 'fadeInHero 300ms ease-out',
-                        }}>
-                          <div style={{ display: 'flex', fontSize: 18, color: '#e5e5e5', fontWeight: 600, marginBottom: 8, alignItems: 'center' }}>
-                            <span style={{ color: '#10b981', fontWeight: 800 }}>{Math.round((tmdb?.rating || 8) * 10)}% match</span>
-                            <span>{tmdb?.year || '2024'}</span>
-                            <span style={{ border: '1px solid rgba(255,255,255,0.4)', padding: '0 4px', borderRadius: 4, textTransform: 'uppercase' }}>TV-MA</span>
-                            <span style={{ color: '#fff', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 300 }}>
-                              {tmdb?.title || fch.name}
-                            </span>
-                          </div>
-                          <div style={{
-                            fontSize: 18, color: '#a3a3a3', lineHeight: 1.4,
-                            display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-                          }}>
-                            {tmdb?.overview || `Sintonize ${fch.name}. Aproveite o melhor do entretenimento diretamente do cosmos.`}
-                          </div>
-                        </div>
-                      )
-                    })()}
+                  </div>
+                )
+              })()}
+
+              {/* Descrição EMBAIXO dos cards */}
+              {isRowFocused && (() => {
+                const focusedIdx = contentCols[rowIdx] || 0
+                const fch = row.channels[focusedIdx]
+                if (!fch) return null
+                const tmdb = row.tmdb?.get(fch.name) || liveTmdbData[fch.name]
+                const year = tmdb?.year || ''
+                const overview = tmdb?.overview || ''
+                const genres = (tmdb as any)?.genres?.slice(0, 2).join(' • ') || ''
+                
+                const metaParts = []
+                if (genres) metaParts.push(genres)
+                if (year) metaParts.push(year)
+                const metaLine = metaParts.join(' • ')
+                
+                return (
+                  <div 
+                    key={fch.id}
+                    style={{
+                      padding: '5px 80px 0',
+                      animation: 'fadeInHero 300ms ease-out',
+                      minHeight: '100px',
+                    }}>
+                    <div style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 20,
+                      color: '#fff',
+                      fontWeight: 500,
+                      marginBottom: 8,
+                      letterSpacing: '0.3px',
+                      transition: 'opacity 200ms ease-in-out',
+                    }}>
+                      {metaLine || 'Filme • 2024'}
+                    </div>
+                    
+                    <div style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 21,
+                      color: '#d4d4d4',
+                      lineHeight: 1.5,
+                      fontWeight: 400,
+                      maxWidth: '55%',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      transition: 'opacity 200ms ease-in-out',
+                    }}>
+                      {overview || 'Descrição não disponível.'}
+                    </div>
                   </div>
                 )
               })()}
             </div>
-          ))}
+          )})}
         </div>
 
       {/* SKELETON SHIMMER LOADING */}
