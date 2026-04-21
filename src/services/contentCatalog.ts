@@ -77,9 +77,9 @@ class ContentCatalogClass {
   private async _doWarmup(): Promise<void> {
     console.log('[ContentCatalog] Iniciando warmup TMDB...')
 
-    // Fase 1: top 100 filmes + top 100 séries (garantir dados na home)
-    const filmes  = this.catalog.get('filmes')?.slice(0, 100) ?? []
-    const series  = this.catalog.get('series')?.slice(0, 100) ?? []
+    // Fase 1: top 20 filmes + top 20 séries (só o essencial para a home)
+    const filmes  = this.catalog.get('filmes')?.slice(0, 20) ?? []
+    const series  = this.catalog.get('series')?.slice(0, 20) ?? []
 
     console.log(`[ContentCatalog] Warmup: ${filmes.length} filmes, ${series.length} séries`)
 
@@ -88,11 +88,8 @@ class ContentCatalogClass {
       this._enrichCategory('series', series),
     ])
 
-    // Fase 2: restante em background (não await)
-    this._enrichRemainder()
-
     this.warmupDone = true
-    console.log('[ContentCatalog] Warmup fase 1 concluído')
+    console.log('[ContentCatalog] Warmup concluído (20+20 canais)')
   }
 
   private async _enrichCategory(cat: UICategory, channels: Channel[]): Promise<void> {
@@ -122,13 +119,7 @@ class ContentCatalogClass {
     }
   }
 
-  private async _enrichRemainder(): Promise<void> {
-    const cats: UICategory[] = ['esportes', 'documentarios', 'noticias', 'infantil']
-    for (const cat of cats) {
-      const channels = this.catalog.get(cat) ?? []
-      if (channels.length) await this._enrichCategory(cat, channels)
-    }
-  }
+
 
   // ─── Pegar pool de uma categoria ─────────────────
   getPool(cat: UICategory, minScore = 0): Channel[] {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useChannelsStore } from '../../store/channelsStore'
 
 const USERS = [
   { id: 1, name: 'Zikualdo',  icon: '👽', color: '#ff006e' },
@@ -17,9 +18,17 @@ export default function ProfileScreen({ onSelect }: Props) {
   const selectingRef = useRef(selecting)
   focusedRef.current = focused
   selectingRef.current = selecting
+  
+  const { status, progress } = useChannelsStore()
+  const isReady = status === 'done'
 
   function handleSelect(idx: number) {
     if (selectingRef.current) return
+    // Só permite selecionar se dados já carregaram
+    if (!isReady) {
+      console.log('[ProfileScreen] Aguardando carregamento completo...')
+      return
+    }
     setSelecting(true)
     setFocused(idx)
     setTimeout(() => onSelect(USERS[idx].id), 500)
@@ -178,6 +187,40 @@ export default function ProfileScreen({ onSelect }: Props) {
             </div>
           )
         })}
+
+        {/* Loading indicator */}
+        {!isReady && (
+          <div style={{
+            marginTop: 24,
+            padding: '16px 24px',
+            borderRadius: 12,
+            background: 'rgba(255,0,110,0.1)',
+            border: '1px solid rgba(255,0,110,0.3)',
+          }}>
+            <div style={{
+              fontFamily: "'Outfit', sans-serif",
+              fontSize: 14,
+              color: '#ff006e',
+              marginBottom: 8,
+            }}>
+              🛸 Preparando catálogo... {Math.round(progress)}%
+            </div>
+            <div style={{
+              width: '100%',
+              height: 4,
+              background: 'rgba(255,255,255,0.1)',
+              borderRadius: 2,
+              overflow: 'hidden',
+            }}>
+              <div style={{
+                width: `${progress}%`,
+                height: '100%',
+                background: 'linear-gradient(90deg, #ff006e, #a855f7)',
+                transition: 'width 300ms ease',
+              }} />
+            </div>
+          </div>
+        )}
 
         {/* Hint */}
         <div style={{

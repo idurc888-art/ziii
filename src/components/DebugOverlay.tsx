@@ -12,7 +12,7 @@ const BATCH_INTERVAL = 100 // ms
 
 export default function DebugOverlay() {
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const [isOpen, setIsOpen] = useState(true) // SEMPRE ABERTO
+  const [isOpen, setIsOpen] = useState(false) // fechado por padrão
   const logsRef = useRef<LogEntry[]>([])
   const batchRef = useRef<LogEntry[]>([])
   const timerRef = useRef<any>(undefined)

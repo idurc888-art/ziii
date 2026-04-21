@@ -123,8 +123,31 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const [heroSlides, setHeroSlides] = useState<HeroSlide[]>(mockHeroSlides)
   const [heroAutoplayReady, setHeroAutoplayReady] = useState(false)
   
-  // ─── Lazy Loading: renderiza só rows visíveis + buffer ───────────────
-  const [maxRenderedRow, setMaxRenderedRow] = useState(3) // Renderiza primeiras 3 rows
+  // ─── Block Rendering Progressivo (Tizen-safe) ──────────────────────
+  // Bloco 1: Hero + primeiras 3 rows (instantâneo)
+  // Bloco 2: Rows 4-8 (após 500ms de idle)
+  // Bloco 3: Restante (on-demand conforme usuário navega)
+  const [maxRenderedRow, setMaxRenderedRow] = useState(3)
+
+  // Bloco 2: carrega automaticamente após UI estabilizar
+  useEffect(() => {
+    if (!isLoadingContent && content && content.rows.length > 3 && maxRenderedRow <= 3) {
+      const timer = setTimeout(() => {
+        setMaxRenderedRow(Math.min(8, content.rows.length))
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [isLoadingContent, content, maxRenderedRow])
+
+  // Bloco 3: carrega restante após 3s ou se o usuário chegar perto
+  useEffect(() => {
+    if (!isLoadingContent && content && content.rows.length > 8 && maxRenderedRow >= 4 && maxRenderedRow < content.rows.length) {
+      const timer = setTimeout(() => {
+        setMaxRenderedRow(content.rows.length)
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [isLoadingContent, content, maxRenderedRow])
 
   // ─── Responsive viewport scale (base 1920px) ───────────────────────
   const [vw, setVw] = useState(() =>
@@ -683,21 +706,23 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           }}
         >
           {rows.map((row, rowIdx) => {
-            // ★ Lazy loading: só renderiza rows visíveis + buffer
+            // ★ Block Rendering: placeholder skeleton para rows pendentes
             if (rowIdx > maxRenderedRow) {
               return (
-                <div key={rowIdx} style={{ height: 300, padding: '24px 80px' }}>
+                <div key={rowIdx} style={{ height: 260, padding: '24px 80px', opacity: 0.3 }}>
                   <div style={{ 
                     fontSize: 22, fontWeight: 800, color: 'rgba(255,255,255,0.3)',
-                    marginBottom: 12
+                    marginBottom: 16
                   }}>
                     {row.title}<span style={{ color: ACCENT }}>{row.titleAccent}</span>
                   </div>
-                  <div style={{ 
-                    fontSize: 14, color: 'rgba(255,255,255,0.2)',
-                    fontStyle: 'italic'
-                  }}>
-                    Navegue para baixo para carregar...
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    {[0,1,2,3,4].map(i => (
+                      <div key={i} style={{
+                        width: 160, height: 200, borderRadius: 10,
+                        background: 'rgba(255,255,255,0.04)',
+                      }} />
+                    ))}
                   </div>
                 </div>
               )

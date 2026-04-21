@@ -90,7 +90,7 @@ async function backgroundEnrich(
     if (toEnrich.length === 0) return
     
     const { enrichBatch } = await import('./tmdbService')
-    const tmdbResults = await enrichBatch(toEnrich, 10, 300)
+    const tmdbResults = await enrichBatch(toEnrich.slice(0, 20), 10, 300)
 
     for (const row of rows) {
       for (const ch of row.channels) {
@@ -112,18 +112,97 @@ async function backgroundEnrich(
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// HOME — Página Principal
+// HOME — Página Principal (Otimizada: CatalogMatcher instantâneo)
 // ═══════════════════════════════════════════════════════════════════
 export async function buildHomeContent(_groups: NormalizedGroups): Promise<ScreenContent> {
+  const t0 = performance.now()
   console.log('[ContentSelector] buildHomeContent iniciado')
-  ContentCatalog.resetUsed()
 
-  // ─── Extrair histórico real ───
+  // ─── 1. Dados instantâneos do CatalogMatcher (já matchou durante splash) ───
+  const { CatalogMatcher } = await import('./catalogMatcher')
+  const byStreaming = CatalogMatcher.getMatchedByStreaming()
+  const hasMatcherData = Object.keys(byStreaming).length > 0
+
+  console.log('[ContentSelector] CatalogMatcher streamings:', Object.keys(byStreaming).join(', ') || 'VAZIO')
+
+  // ─── 2. Montar rows por streaming (instantâneo, zero API) ───
+  let rows: ContentRow[]
+
+  if (hasMatcherData) {
+    // CAMINHO RÁPIDO: usa dados pré-matchados do CatalogMatcher
+    const STREAMING_CONF = [
+      { key: 'netflix', emoji: '🎬', label: 'Netflix' },
+      { key: 'amazon',  emoji: '🎥', label: 'Amazon' },
+      { key: 'hbo',     emoji: '🎭', label: 'HBO Max' },
+      { key: 'disney',  emoji: '✨', label: 'Disney+' },
+      { key: 'paramount', emoji: '🎞', label: 'Paramount' },
+      { key: 'apple',   emoji: '🍎', label: 'Apple TV+' },
+    ]
+
+    rows = STREAMING_CONF.flatMap(({ key, emoji, label }) => {
+      const group = byStreaming[key]
+      if (!group) return []
+      const result: ContentRow[] = []
+      if (group.movies.length >= 3) {
+        result.push({
+          type: 'portrait', title: `${emoji} ${label} `, titleAccent: 'Filmes',
+          channels: group.movies.slice(0, 20), tmdb: new Map(),
+        })
+      }
+      if (group.series.length >= 3) {
+        result.push({
+          type: 'portrait', title: `${emoji} ${label} `, titleAccent: 'Séries',
+          channels: group.series.slice(0, 20), tmdb: new Map(),
+        })
+      }
+      return result
+    })
+
+    // Preenche TMDB dos matched channels usando seus dados canônicos embutidos
+    for (const row of rows) {
+      for (const ch of row.channels) {
+        const canonical = (ch as any).canonical
+        if (canonical) {
+          row.tmdb.set(ch.name, {
+            title: canonical.title ?? ch.name,
+            year: String(canonical.year ?? ''),
+            rating: canonical.rating ?? 0,
+            overview: canonical.overview ?? '',
+            poster: canonical.poster ?? '',
+            backdrop: canonical.backdrop ?? '',
+            tmdbId: canonical.tmdbId ?? 0,
+            mediaType: canonical.type === 'series' ? 'tv' : 'movie',
+            trailerKey: '',
+          } as any)
+        }
+      }
+    }
+
+    console.log(`[ContentSelector] CAMINHO RÁPIDO: ${rows.length} rows do CatalogMatcher`)
+  } else {
+    // CAMINHO FALLBACK: ContentCatalog com pools genéricos (sem esperar TMDB)
+    console.log('[ContentSelector] FALLBACK: CatalogMatcher vazio, usando ContentCatalog pools')
+    ContentCatalog.resetUsed()
+    const allFilmes = ContentCatalog.getPool('filmes')
+    const allSeries = ContentCatalog.getPool('series')
+
+    rows = [
+      { type: 'portrait' as const, title: '🎬 Top ', titleAccent: 'Filmes', channels: allFilmes.slice(0, 20), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🍿 Mais ', titleAccent: 'Filmes', channels: allFilmes.slice(20, 40), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🎥 Descobrir ', titleAccent: 'Filmes', channels: allFilmes.slice(40, 60), tmdb: new Map() },
+      { type: 'portrait' as const, title: '📺 Top ', titleAccent: 'Séries', channels: allSeries.slice(0, 20), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🎭 Mais ', titleAccent: 'Séries', channels: allSeries.slice(20, 40), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🎪 Descobrir ', titleAccent: 'Séries', channels: allSeries.slice(40, 60), tmdb: new Map() },
+    ].filter(r => r.channels.length > 0)
+
+    fillTmdbFromCache(rows)
+  }
+
+  // ─── 3. Histórico: "Continuar Assistindo" ───
   const allChannelsMap = new Map<string, Channel>()
   for (const list of Object.values(_groups)) {
     for (const ch of list) allChannelsMap.set(ch.name, ch)
   }
-
   const historyEntries = getMostWatched(10)
   const historyChannels = historyEntries
     .map(h => allChannelsMap.get(h.name)!)
@@ -138,101 +217,43 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
     ]
   }
 
-  // Hero: Stranger Things fixo como primeiro slide
+  if (mostWatchedPool.length > 0) {
+    rows.unshift({
+      type: 'wide' as const,
+      title: '🔥 Continuar ',
+      titleAccent: 'Assistindo',
+      channels: mostWatchedPool,
+      tmdb: new Map(),
+    })
+  }
+
+  // ─── 4. Hero section ───
   const strangerThings: Channel = {
-    id: 'stranger-things',
-    name: 'Stranger Things',
-    url: '',
-    logo: '',
-    group: 'Séries',
-    streams: [],
-    activeStream: { url: '', quality: 'FHD', label: 'Trailer' },
-    variantCount: 1,
+    id: 'stranger-things', name: 'Stranger Things', url: '', logo: '', group: 'Séries',
+    streams: [], activeStream: { url: '', quality: 'FHD', label: 'Trailer' }, variantCount: 1,
     tmdb: {
-      title: 'Stranger Things',
-      year: '2016',
-      rating: 8.7,
+      title: 'Stranger Things', year: '2016', rating: 8.7,
       overview: 'Quando um garoto desaparece, a cidade toda participa nas buscas. Mas o que encontram são segredos, forças sobrenaturais e uma menina.',
-      poster: '',
-      backdrop: 'https://image.tmdb.org/t/p/w1280/56v2KjBlU4XaOv9rVYEQypROD7P.jpg',
-      tmdbId: 66732,
-      mediaType: 'tv',
-      trailerKey: 'b9EkMc79ZSU'
+      poster: '', backdrop: 'https://image.tmdb.org/t/p/w1280/56v2KjBlU4XaOv9rVYEQypROD7P.jpg',
+      tmdbId: 66732, mediaType: 'tv', trailerKey: 'b9EkMc79ZSU'
     }
   } as Channel
-  
-  let heroChannels = [strangerThings, ...ContentCatalog.pickBest('filmes', 4, { minScore: 0 })]
-  if (heroChannels.length === 1) {
-     const mix = ContentCatalog.pickMix(['filmes', 'series'], 4, 0);
-     if (mix.length > 0) heroChannels = [strangerThings, ...mix];
+
+  // Hero: pega as primeiras séries Netflix matchadas como destaque, se existirem
+  let heroChannels: Channel[] = [strangerThings]
+  if (hasMatcherData && byStreaming.netflix?.series?.length > 0) {
+    heroChannels = [strangerThings, ...byStreaming.netflix.series.slice(0, 4)]
+  } else {
+    const mix = ContentCatalog.pickMix(['filmes', 'series'], 4, 0)
+    if (mix.length > 0) heroChannels = [strangerThings, ...mix]
   }
-
-  console.log('[ContentSelector] Hero channels:', heroChannels.length)
-
-  const allFilmes = ContentCatalog.getPool('filmes')
-  const allSeries = ContentCatalog.getPool('series')
-  
-  console.log('[ContentSelector] Total - Filmes:', allFilmes.length, 'Séries:', allSeries.length)
-
-  // ─── Build rows IMEDIATAMENTE sem esperar TMDB ────
-  // Usa dados já cacheados do warmup (ch.tmdb) que o ContentCatalog já enriqueceu
-  let rows: ContentRow[]
-
-  try {
-    console.log('[ContentSelector] Iniciando build de Top 50 TMDB...')
-    const { buildTopRows } = await import('./topRowsBuilder')
-    const topRows = await buildTopRows(allFilmes, allSeries)
-    console.log('[ContentSelector] Top rows criadas:', topRows.length)
-    
-    if (topRows.length === 0) {
-      throw new Error('buildTopRows retornou 0 rows')
-    }
-    
-    rows = topRows.map(tr => ({
-      type: tr.type,
-      title: tr.title,
-      titleAccent: tr.titleAccent,
-      channels: tr.channels,
-      tmdb: tr.tmdb as any,
-    }))
-  } catch (err) {
-    console.error('[ContentSelector] TMDB Top 50 falhou, usando fallback:', err)
-    
-    // Fallback: rows diretas do pool sem TMDB
-    rows = [
-      { type: 'portrait' as const, title: '🎬 Top ', titleAccent: 'Filmes', channels: allFilmes.slice(0, 20), tmdb: new Map() },
-      { type: 'portrait' as const, title: '🍿 Mais ', titleAccent: 'Filmes', channels: allFilmes.slice(20, 40), tmdb: new Map() },
-      { type: 'portrait' as const, title: '🎥 Descobrir ', titleAccent: 'Filmes', channels: allFilmes.slice(40, 60), tmdb: new Map() },
-      { type: 'portrait' as const, title: '🎞️ Novos ', titleAccent: 'Filmes', channels: allFilmes.slice(60, 80), tmdb: new Map() },
-      { type: 'portrait' as const, title: '🌟 Clássicos ', titleAccent: 'Filmes', channels: allFilmes.slice(80, 100), tmdb: new Map() },
-      { type: 'portrait' as const, title: '📺 Top ', titleAccent: 'Séries', channels: allSeries.slice(0, 20), tmdb: new Map() },
-      { type: 'portrait' as const, title: '🎭 Mais ', titleAccent: 'Séries', channels: allSeries.slice(20, 40), tmdb: new Map() },
-      { type: 'portrait' as const, title: '🎪 Descobrir ', titleAccent: 'Séries', channels: allSeries.slice(40, 60), tmdb: new Map() },
-      { type: 'portrait' as const, title: '✨ Novas ', titleAccent: 'Séries', channels: allSeries.slice(60, 80), tmdb: new Map() },
-      { type: 'portrait' as const, title: '🏆 Populares ', titleAccent: 'Séries', channels: allSeries.slice(80, 100), tmdb: new Map() },
-    ]
-  }
-
-  // Adiciona Continuar Assistindo
-  rows.push({
-    type: 'wide' as const,
-    title: '🔥 Continuar ',
-    titleAccent: 'Assistindo',
-    channels: mostWatchedPool,
-    tmdb: new Map(),
-  })
-
-  // Preenche tmdb com dados já cacheados
-  fillTmdbFromCache(rows)
-
-  console.log('[ContentSelector] Rows criadas:', rows.length)
-  rows.forEach((r, i) => console.log(`  Row ${i}: ${r.title}${r.titleAccent} (${r.channels.length} canais)`))
 
   const heroTmdb = buildHeroTmdb(heroChannels)
 
-  // Background enrich (não bloqueia)
+  // Background enrich para canais sem TMDB data (não bloqueia)
   backgroundEnrich(heroChannels, rows, heroTmdb)
 
+  console.log(`[ContentSelector] buildHomeContent em ${(performance.now() - t0).toFixed(1)}ms — ${rows.length} rows`)
   return { heroChannels, heroTmdb, rows }
 }
 
