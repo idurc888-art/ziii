@@ -12,7 +12,7 @@ const BATCH_INTERVAL = 100 // ms
 
 export default function DebugOverlay() {
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(true) // SEMPRE ABERTO
   const logsRef = useRef<LogEntry[]>([])
   const batchRef = useRef<LogEntry[]>([])
   const timerRef = useRef<any>(undefined)
@@ -81,16 +81,10 @@ export default function DebugOverlay() {
 
     // Teclas de controle
     const onKey = (e: KeyboardEvent) => {
-      // F1 ou botão vermelho (403) = toggle
-      // F1 = toggle overlay
-      if (e.key === 'F1' || e.keyCode === 403) {
+      // F1, botão vermelho (403), ou TOOLS (10135) = toggle
+      if (e.key === 'F1' || e.keyCode === 403 || e.keyCode === 10135) {
         e.preventDefault()
         setIsOpen((v: boolean) => !v)
-      }
-      // F2 = limpar logs
-      if (e.key === 'F1' || e.keyCode === 403) {
-        e.preventDefault()
-        setIsOpen(prev => !prev)
       }
       // F2 = limpar logs
       if (e.key === 'F2' || e.keyCode === 404) {

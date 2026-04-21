@@ -1,32 +1,27 @@
 import { create } from 'zustand'
 import type { Channel } from '../types/channel'
 import { mockGroups } from '../data/mockChannels'
-import { loadPlaylist, clearPlaylistCache } from '../services/playlistService'
+import { CatalogMatcher, type MatchStatus, type MatchedChannel } from '../services/catalogMatcher'
 import { normalizeGroups, type UICategory } from '../services/categoryMapper'
 import { ContentCatalog } from '../services/contentCatalog'
+import * as db from '../services/dbClient'
 
-type LoadStatus = 
-  | 'idle' 
-  | 'cache_check' 
-  | 'cache_hit' 
-  | 'cache_miss' 
-  | 'fetching' 
-  | 'parsing' 
-  | 'saving' 
-  | 'ready' 
-  | 'error'
-
+type LoadStatus = MatchStatus | 'idle' | 'ready'
 type BootStatus = 'cold' | 'warming' | 'warm'
 
 interface ChannelsState {
-  // Dados brutos (pipeline nível 1)
-  groups: Record<string, Channel[]>
+  // Dados do novo pipeline (CatalogMatcher)
+  matchedChannels: MatchedChannel[]
+  unmatchedChannels: Channel[]
+  
   // Dados normalizados (pipeline nível 2 — UI consome isto)
   normalizedGroups: Record<UICategory, Channel[]>
 
   currentChannel: Channel | null
   status: LoadStatus
   bootStatus: BootStatus
+  progress: number
+  progressMessage: string
   error: string | null
   lastUrl: string | null
 
@@ -42,21 +37,25 @@ const EMPTY_NORMALIZED: Record<UICategory, Channel[]> = {
 }
 
 export const useChannelsStore = create<ChannelsState>((set, get) => ({
-  groups: {},
+  matchedChannels: [],
+  unmatchedChannels: [],
   normalizedGroups: { ...EMPTY_NORMALIZED },
   currentChannel: null,
   status: 'idle',
   bootStatus: 'cold',
+  progress: 0,
+  progressMessage: '',
   error: null,
   lastUrl: null,
   
   setCurrentChannel: (ch) => set({ currentChannel: ch }),
   
   loadMock: () => set({ 
-    groups: mockGroups, 
     normalizedGroups: normalizeGroups(mockGroups),
     status: 'ready', 
     bootStatus: 'warm',
+    progress: 100,
+    progressMessage: 'Mock carregado',
     error: null,
     lastUrl: null
   }),
@@ -65,52 +64,104 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
     const state = get()
     
     // Previne reprocessamento da mesma URL na memória
-    if (state.lastUrl === url && state.status === 'ready') {
-      console.log('[Store] memory_hit')
+    if (state.lastUrl === url && state.status === 'done') {
+      console.log('[Store] memory_hit - URL já carregada')
       return
     }
     
     // Previne execução simultânea (in-flight)
-    if (state.status !== 'idle' && state.status !== 'ready' && state.status !== 'error') {
+    if (state.status === 'fetching' || state.status === 'parsing' || state.status === 'matching') {
       console.log('[Store] in_flight_reuse')
       return
     }
     
-    set({ status: 'cache_check', bootStatus: 'warming', error: null, lastUrl: url })
+    set({ 
+      status: 'fetching', 
+      bootStatus: 'warming',
+      progress: 0, 
+      progressMessage: 'Iniciando...', 
+      error: null,
+      lastUrl: url 
+    })
     
     try {
-      // Pipeline nível 1: parse bruto
-      const groups = await loadPlaylist(url)
+      // Pluga o callback de progresso para atualizar o Zustand em tempo real
+      CatalogMatcher.onProgress = (status, progress, message) => {
+        set({ status, progress, progressMessage: message })
+      }
       
-      // Pipeline nível 2: normalização
-      const normalizedGroups = normalizeGroups(groups)
-
-      // Pipeline nível 3: inicializar catálogo ANTES de atualizar estado React
-      // Crítico: evita race condition onde HomeScreen.buildHomeContent roda
-      // antes do ContentCatalog.init() do App.tsx (child effects < parent effects)
+      // Dispara o motor de match (Worker faz tudo: fetch + parse + match)
+      const { matched, unmatched } = await CatalogMatcher.loadAndMatch(url)
+      
+      console.log(`[Store] Match concluído: ${matched.length} matched, ${unmatched.length} unmatched`)
+      
+      // Converte matched[] para formato que a UI espera (grupos por categoria)
+      // Temporariamente usa o group original até refatorarmos o ContentSelector
+      const groupsByCategory: Record<string, Channel[]> = {}
+      
+      for (const ch of matched) {
+        const cat = ch.canonical.streaming // ou ch.group
+        if (!groupsByCategory[cat]) groupsByCategory[cat] = []
+        groupsByCategory[cat].push(ch)
+      }
+      
+      // Adiciona unmatched também (vão para 'outros')
+      for (const ch of unmatched) {
+        if (!groupsByCategory[ch.group]) groupsByCategory[ch.group] = []
+        groupsByCategory[ch.group].push(ch)
+      }
+      
+      // Normaliza para as 8 categorias da UI
+      const normalizedGroups = normalizeGroups(groupsByCategory)
+      
+      // Inicializa catálogo ANTES de atualizar estado React
       ContentCatalog.init(normalizedGroups)
       
       // Persiste a URL para a próxima sessão
       localStorage.setItem('ziiiTV_lastUrl', url)
       
-      // Pipeline nível 3: UI ready
-      set({ groups, normalizedGroups, status: 'ready', bootStatus: 'warm', error: null })
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err)
-      set({ status: 'error', error: errorMsg })
-      console.error('[Store] error:', errorMsg)
+      // Finaliza o estado com sucesso
+      set({ 
+        matchedChannels: matched,
+        unmatchedChannels: unmatched,
+        normalizedGroups,
+        status: 'done', 
+        bootStatus: 'warm',
+        progress: 100, 
+        progressMessage: 'Concluído',
+        error: null
+      })
+      
+      // TMDB warmup em background (NÃO bloqueante) — só para unmatched
+      ContentCatalog.warmup().catch(err => {
+        console.warn('[Store] TMDB warmup error (non-fatal):', err)
+      })
+      
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.error('[Store] Falha crítica no pipeline M3U:', error)
+      set({ 
+        status: 'error', 
+        progress: 0, 
+        progressMessage: errorMsg,
+        error: errorMsg
+      })
     }
   },
   
   clearCache: async () => {
-    await clearPlaylistCache()
+    CatalogMatcher.reset()
+    await db.clear()
     localStorage.removeItem('ziiiTV_lastUrl')
     set({ 
-      groups: {}, 
+      matchedChannels: [],
+      unmatchedChannels: [],
       normalizedGroups: { ...EMPTY_NORMALIZED },
       currentChannel: null, 
       status: 'idle', 
       bootStatus: 'cold',
+      progress: 0,
+      progressMessage: '',
       error: null,
       lastUrl: null
     })

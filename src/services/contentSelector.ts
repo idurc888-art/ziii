@@ -1,4 +1,7 @@
 // Content Selector — Monta as rows de cada tela filtrando do ContentCatalog
+// OTIMIZADO: retorna rows IMEDIATAMENTE com dados do cache TMDB (warmup).
+// Não bloqueia mais em enrichBatch — a UI já renderiza e os dados TMDB
+// preenchem conforme o warmup do ContentCatalog progride em background.
 import type { Channel } from '../types/channel'
 import type { TMDBResult } from './tmdbService'
 import { ContentCatalog } from './contentCatalog'
@@ -23,7 +26,7 @@ export interface ScreenContent {
 
 type NormalizedGroups = Record<UICategory, Channel[]>
 
-// ─── Helpers TMDB Binding ───────────────────────────────────────────
+// ─── Helpers ───────────────────────────────────────────
 function buildRows(rowsData: Partial<ContentRow>[]): ContentRow[] {
   return rowsData
     .filter(r => r.channels && r.channels.length > 0)
@@ -32,43 +35,85 @@ function buildRows(rowsData: Partial<ContentRow>[]): ContentRow[] {
       title: r.title || '',
       titleAccent: r.titleAccent || '',
       channels: r.channels!,
-      tmdb: new Map() // tmdb is attached inside channels directly now, but kept for compatibility
+      tmdb: new Map()
     }))
 }
 
-// ─── Centralized TMDB enrichment for hero + rows ────────────────────
-async function enrichRowsAndHero(
-  heroChannels: Channel[],
-  rows: ContentRow[],
-  heroTmdbBase?: Map<string, TMDBResult | null>,
-): Promise<{ heroTmdb: Map<string, TMDBResult | null>; rows: ContentRow[] }> {
-  const heroTmdb = heroTmdbBase ? new Map(heroTmdbBase) : new Map<string, TMDBResult | null>()
-
-  const allChannels = [
-    ...heroChannels,
-    ...rows.flatMap(r => r.channels),
-  ]
-  const uniqueNames = Array.from(new Set(allChannels.map(ch => ch.name)))
-
-  const { enrichBatch } = await import('./tmdbService')
-  const tmdbResults = await enrichBatch(uniqueNames, 30, 300)
-
+// ─── Preenche tmdb das rows COM dados já cacheados (sem chamar API) ───
+function fillTmdbFromCache(rows: ContentRow[]): void {
   for (const row of rows) {
     for (const ch of row.channels) {
-      const tmdb = tmdbResults.get(ch.name) ?? ch.tmdb ?? null
-      row.tmdb.set(ch.name, tmdb)
+      if (ch.tmdb) {
+        row.tmdb.set(ch.name, ch.tmdb)
+      }
     }
   }
-
-  for (const ch of heroChannels) {
-    if (ch.name === 'ziiiTV') continue
-    const tmdb = tmdbResults.get(ch.name) ?? ch.tmdb ?? null
-    if (tmdb) heroTmdb.set(ch.name, tmdb)
-  }
-
-  return { heroTmdb, rows }
 }
 
+function buildHeroTmdb(heroChannels: Channel[]): Map<string, TMDBResult | null> {
+  const heroTmdb = new Map<string, TMDBResult | null>()
+  for (const ch of heroChannels) {
+    if (ch.name === 'ziiiTV') {
+      heroTmdb.set(ch.name, {
+        title: 'ziiiTV', year: '2024', rating: 9.9,
+        overview: 'Seu universo de entretenimento alienígena. Canais ao vivo, filmes e séries em ultra definições otimizadas.',
+        poster: '', backdrop: '/banner-ziii.jpg',
+        tmdbId: 0, mediaType: 'movie', trailerKey: '',
+      })
+    } else {
+      heroTmdb.set(ch.name, ch.tmdb || null)
+    }
+  }
+  return heroTmdb
+}
+
+// ─── Enrichment background (não bloqueia, atualiza em background) ───
+async function backgroundEnrich(
+  heroChannels: Channel[],
+  rows: ContentRow[],
+  heroTmdb: Map<string, TMDBResult | null>,
+  onUpdate?: (heroTmdb: Map<string, TMDBResult | null>, rows: ContentRow[]) => void
+): Promise<void> {
+  try {
+    const allChannels = [
+      ...heroChannels,
+      ...rows.flatMap(r => r.channels),
+    ]
+    const uniqueNames = Array.from(new Set(allChannels.map(ch => ch.name)))
+    
+    // Só enriquecer nomes que ainda não têm dados TMDB
+    const toEnrich = uniqueNames.filter(name => {
+      const existing = allChannels.find(ch => ch.name === name)
+      return !existing?.tmdb
+    })
+    
+    if (toEnrich.length === 0) return
+    
+    const { enrichBatch } = await import('./tmdbService')
+    const tmdbResults = await enrichBatch(toEnrich, 10, 300)
+
+    for (const row of rows) {
+      for (const ch of row.channels) {
+        const tmdb = tmdbResults.get(ch.name) ?? ch.tmdb ?? null
+        if (tmdb) row.tmdb.set(ch.name, tmdb)
+      }
+    }
+
+    for (const ch of heroChannels) {
+      if (ch.name === 'ziiiTV') continue
+      const tmdb = tmdbResults.get(ch.name) ?? ch.tmdb ?? null
+      if (tmdb) heroTmdb.set(ch.name, tmdb)
+    }
+
+    if (onUpdate) onUpdate(heroTmdb, rows)
+  } catch (err) {
+    console.warn('[ContentSelector] Background enrich error (non-fatal):', err)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// HOME — Página Principal
+// ═══════════════════════════════════════════════════════════════════
 export async function buildHomeContent(_groups: NormalizedGroups): Promise<ScreenContent> {
   console.log('[ContentSelector] buildHomeContent iniciado')
   ContentCatalog.resetUsed()
@@ -84,19 +129,14 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
     .map(h => allChannelsMap.get(h.name)!)
     .filter(Boolean)
 
-  // Fallback se histórico for vazio ou < 10
   const fallbackNeeded = 10 - historyChannels.length
   let mostWatchedPool = historyChannels
   if (fallbackNeeded > 0) {
     mostWatchedPool = [
       ...historyChannels,
-      ...ContentCatalog.pickMix(['filmes', 'series', 'abertos'], fallbackNeeded, 50)
+      ...ContentCatalog.pickMix(['filmes', 'series', 'abertos'], fallbackNeeded, 0)
     ]
   }
-  // Marca o pool como usado para o dedup
-  mostWatchedPool.forEach(ch => ContentCatalog.pickBest('filmes', 0, { excludeLocal: new Set([ch.id]), allowReuse: false })) 
-  // ↑ hack seguro para adicionar ao usedIds indiretamente no ContentCatalog.
-  // Melhor abordagem explícita se pudéssemos, mas no ContentCatalog o pickMix/pickBest já o faz.
 
   // Hero: Stranger Things fixo como primeiro slide
   const strangerThings: Channel = {
@@ -131,74 +171,75 @@ export async function buildHomeContent(_groups: NormalizedGroups): Promise<Scree
 
   const allFilmes = ContentCatalog.getPool('filmes')
   const allSeries = ContentCatalog.getPool('series')
+  
+  console.log('[ContentSelector] Total - Filmes:', allFilmes.length, 'Séries:', allSeries.length)
 
-  // Detecta streaming pelo group-title
-  const detectStreaming = (ch: Channel): string => {
-    const g = (ch.group || '').toLowerCase()
-    if (g.includes('netflix')) return 'netflix'
-    if (g.includes('amazon') || g.includes('prime')) return 'amazon'
-    if (g.includes('hbo') || g.includes('max')) return 'hbo'
-    if (g.includes('disney')) return 'disney'
-    if (g.includes('paramount')) return 'paramount'
-    if (g.includes('apple')) return 'apple'
-    return 'outros'
+  // ─── Build rows IMEDIATAMENTE sem esperar TMDB ────
+  // Usa dados já cacheados do warmup (ch.tmdb) que o ContentCatalog já enriqueceu
+  let rows: ContentRow[]
+
+  try {
+    console.log('[ContentSelector] Iniciando build de Top 50 TMDB...')
+    const { buildTopRows } = await import('./topRowsBuilder')
+    const topRows = await buildTopRows(allFilmes, allSeries)
+    console.log('[ContentSelector] Top rows criadas:', topRows.length)
+    
+    if (topRows.length === 0) {
+      throw new Error('buildTopRows retornou 0 rows')
+    }
+    
+    rows = topRows.map(tr => ({
+      type: tr.type,
+      title: tr.title,
+      titleAccent: tr.titleAccent,
+      channels: tr.channels,
+      tmdb: tr.tmdb as any,
+    }))
+  } catch (err) {
+    console.error('[ContentSelector] TMDB Top 50 falhou, usando fallback:', err)
+    
+    // Fallback: rows diretas do pool sem TMDB
+    rows = [
+      { type: 'portrait' as const, title: '🎬 Top ', titleAccent: 'Filmes', channels: allFilmes.slice(0, 20), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🍿 Mais ', titleAccent: 'Filmes', channels: allFilmes.slice(20, 40), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🎥 Descobrir ', titleAccent: 'Filmes', channels: allFilmes.slice(40, 60), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🎞️ Novos ', titleAccent: 'Filmes', channels: allFilmes.slice(60, 80), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🌟 Clássicos ', titleAccent: 'Filmes', channels: allFilmes.slice(80, 100), tmdb: new Map() },
+      { type: 'portrait' as const, title: '📺 Top ', titleAccent: 'Séries', channels: allSeries.slice(0, 20), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🎭 Mais ', titleAccent: 'Séries', channels: allSeries.slice(20, 40), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🎪 Descobrir ', titleAccent: 'Séries', channels: allSeries.slice(40, 60), tmdb: new Map() },
+      { type: 'portrait' as const, title: '✨ Novas ', titleAccent: 'Séries', channels: allSeries.slice(60, 80), tmdb: new Map() },
+      { type: 'portrait' as const, title: '🏆 Populares ', titleAccent: 'Séries', channels: allSeries.slice(80, 100), tmdb: new Map() },
+    ]
   }
 
-  // Agrupa filmes por streaming
-  const filmesPorStreaming: Record<string, Channel[]> = {}
-  for (const filme of allFilmes) {
-    const streaming = detectStreaming(filme)
-    if (!filmesPorStreaming[streaming]) filmesPorStreaming[streaming] = []
-    filmesPorStreaming[streaming].push(filme)
-  }
+  // Adiciona Continuar Assistindo
+  rows.push({
+    type: 'wide' as const,
+    title: '🔥 Continuar ',
+    titleAccent: 'Assistindo',
+    channels: mostWatchedPool,
+    tmdb: new Map(),
+  })
 
-  // Agrupa séries por streaming
-  const seriesPorStreaming: Record<string, Channel[]> = {}
-  for (const serie of allSeries) {
-    const streaming = detectStreaming(serie)
-    if (!seriesPorStreaming[streaming]) seriesPorStreaming[streaming] = []
-    seriesPorStreaming[streaming].push(serie)
-  }
-
-  const rows = buildRows([
-    { type: 'portrait' as const, title: '🎬 Netflix ', titleAccent: 'Filmes', channels: (filmesPorStreaming.netflix || []).slice(0, 20) },
-    { type: 'portrait' as const, title: '📺 Netflix ', titleAccent: 'Séries', channels: (seriesPorStreaming.netflix || []).slice(0, 20) },
-    { type: 'portrait' as const, title: '🎥 Amazon ', titleAccent: 'Filmes', channels: (filmesPorStreaming.amazon || []).slice(0, 20) },
-    { type: 'portrait' as const, title: '🍿 Amazon ', titleAccent: 'Séries', channels: (seriesPorStreaming.amazon || []).slice(0, 20) },
-    { type: 'portrait' as const, title: '🎭 HBO ', titleAccent: 'Filmes', channels: (filmesPorStreaming.hbo || []).slice(0, 20) },
-    { type: 'portrait' as const, title: '🎪 HBO ', titleAccent: 'Séries', channels: (seriesPorStreaming.hbo || []).slice(0, 20) },
-    { type: 'portrait' as const, title: '✨ Disney+ ', titleAccent: 'Filmes', channels: (filmesPorStreaming.disney || []).slice(0, 20) },
-    { type: 'portrait' as const, title: '🏰 Disney+ ', titleAccent: 'Séries', channels: (seriesPorStreaming.disney || []).slice(0, 20) },
-    {
-      type: 'wide' as const,
-      title: '🔥 Continuar ',
-      titleAccent: 'Assistindo',
-      channels: mostWatchedPool
-    },
-  ].filter(row => row.channels.length > 0)) // Remove rows vazias
+  // Preenche tmdb com dados já cacheados
+  fillTmdbFromCache(rows)
 
   console.log('[ContentSelector] Rows criadas:', rows.length)
   rows.forEach((r, i) => console.log(`  Row ${i}: ${r.title}${r.titleAccent} (${r.channels.length} canais)`))
 
-  const heroTmdb = new Map<string, TMDBResult | null>()
-  for (const ch of heroChannels) {
-    if (ch.name === 'ziiiTV') {
-      heroTmdb.set(ch.name, {
-        title: 'ziiiTV', year: '2024', rating: 9.9,
-        overview: 'Seu universo de entretenimento alienígena. Canais ao vivo, filmes e séries em ultra definições otimizadas.',
-        poster: '', backdrop: '/banner-ziii.jpg',
-        tmdbId: 0, mediaType: 'movie', trailerKey: '',
-      })
-    } else {
-      heroTmdb.set(ch.name, ch.tmdb || null)
-    }
-  }
+  const heroTmdb = buildHeroTmdb(heroChannels)
 
-  const enriched = await enrichRowsAndHero(heroChannels, rows, heroTmdb)
-  return { heroChannels, heroTmdb: enriched.heroTmdb, rows: enriched.rows }
+  // Background enrich (não bloqueia)
+  backgroundEnrich(heroChannels, rows, heroTmdb)
+
+  return { heroChannels, heroTmdb, rows }
 }
 
 
+// ═══════════════════════════════════════════════════════════════════
+// FILMES
+// ═══════════════════════════════════════════════════════════════════
 export async function buildFilmesContent(_groups: NormalizedGroups): Promise<ScreenContent> {
   ContentCatalog.resetUsed()
 
@@ -214,7 +255,6 @@ export async function buildFilmesContent(_groups: NormalizedGroups): Promise<Scr
     .map(h => allChannelsMap.get(h.name)!)
     .filter(ch => ch && ContentCatalog.getPool('filmes').includes(ch))
 
-  // Fallback se histórico for vazio
   const fallbackNeeded = 10 - historyFilmes.length
   let maisAssistidos = historyFilmes
   if (fallbackNeeded > 0) {
@@ -232,15 +272,20 @@ export async function buildFilmesContent(_groups: NormalizedGroups): Promise<Scr
     { type: 'portrait', title: '🎬 Grandes ', titleAccent: 'Clássicos', channels: ContentCatalog.searchByGroup('filmes', /cl\u00e1ssico|classico|antigo/i, 20) },
   ])
 
-  const heroTmdb = new Map<string, TMDBResult | null>()
-  for (const ch of heroChannels) {
-    heroTmdb.set(ch.name, ch.tmdb || null)
-  }
+  // Preencher com dados TMDB já cacheados
+  fillTmdbFromCache(rows)
 
-  const enriched = await enrichRowsAndHero(heroChannels, rows, heroTmdb)
-  return { heroChannels, heroTmdb: enriched.heroTmdb, rows: enriched.rows }
+  const heroTmdb = buildHeroTmdb(heroChannels)
+
+  // Background enrich (não bloqueia)
+  backgroundEnrich(heroChannels, rows, heroTmdb)
+
+  return { heroChannels, heroTmdb, rows }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// SÉRIES
+// ═══════════════════════════════════════════════════════════════════
 export async function buildSeriesContent(_groups: NormalizedGroups): Promise<ScreenContent> {
   ContentCatalog.resetUsed()
 
@@ -256,57 +301,54 @@ export async function buildSeriesContent(_groups: NormalizedGroups): Promise<Scr
     { type: 'portrait', title: '🔮 Sci-Fi & ', titleAccent: 'Mistério', channels: ContentCatalog.searchByGroup('series', /fic\u00e7\u00e3o|sci|mist\u00e9rio/i, 20) },
   ])
 
-  const heroTmdb = new Map<string, TMDBResult | null>()
-  for (const ch of heroChannels) {
-    heroTmdb.set(ch.name, ch.tmdb || null)
-  }
+  fillTmdbFromCache(rows)
 
-  const enriched = await enrichRowsAndHero(heroChannels, rows, heroTmdb)
-  return { heroChannels, heroTmdb: enriched.heroTmdb, rows: enriched.rows }
+  const heroTmdb = buildHeroTmdb(heroChannels)
+  
+  backgroundEnrich(heroChannels, rows, heroTmdb)
+
+  return { heroChannels, heroTmdb, rows }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// TV AO VIVO
+// ═══════════════════════════════════════════════════════════════════
 export async function buildTvContent(_groups: NormalizedGroups): Promise<ScreenContent> {
   ContentCatalog.resetUsed()
   
   const heroChannels = ContentCatalog.getPool('abertos').slice(0, 5)
 
   const rows = buildRows([
-    // Linha 1 — Jogos & Campeonatos
     {
       type: 'wide',
       title: '⚽ Jogos & ',
       titleAccent: 'Campeonatos',
       channels: ContentCatalog.searchPool('esportes', /( x | \/ | - )|(libertadores|brasileir|champions|sulamericana)/i, 20)
     },
-    // Linha 2 — Premiere Clubes
     {
       type: 'portrait',
       title: '🏟️ Rede ',
       titleAccent: 'Premiere',
       channels: ContentCatalog.searchPool('esportes', /premiere/i, 20)
     },
-    // Linha 3 — Canais de Esportes Clássicos
     {
       type: 'portrait',
       title: '🏆 ESPN & ',
       titleAccent: 'SporTV',
       channels: ContentCatalog.searchPool('esportes', /espn|sportv/i, 20)
     },
-    // Linha 4 — Mais Esportes & Lutas
     {
       type: 'portrait',
       title: '🥊 Paramount, NBA & ',
       titleAccent: 'Lutas',
       channels: ContentCatalog.searchPool('esportes', /paramount|tnt|space|band|nba|ufc|combate/i, 20)
     },
-    // Linha 5 — Esportes Diversos (Restante do pool de esportes)
     { 
       type: 'simple', 
       title: '⚡ Mais ', 
       titleAccent: 'Esportes', 
       channels: ContentCatalog.getPool('esportes').slice(0, 20) 
     },
-    // Linha 6 — Canais Abertos / Notícias (Complemento do Hub de TV Ao Vivo)
     { 
       type: 'simple', 
       title: '📡 Canais ', 

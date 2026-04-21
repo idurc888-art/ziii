@@ -35,12 +35,24 @@ export const CATEGORY_LABELS: Record<UICategory, string> = {
 // Extensível: basta adicionar novos patterns sem mexer no resto
 const CATEGORY_RULES: Array<{ category: UICategory; patterns: RegExp[] }> = [
   {
-    category: 'filmes',
-    patterns: [/film/i, /movie/i, /cinema/i, /vod.*film/i, /pelicul/i],
+    category: 'series',
+    patterns: [
+      /\btemporada\b/i, 
+      /\bseason\b/i, 
+      /\bs\d+e\d+\b/i,
+      /\bepisodio\b/i,
+      /\bepisode\b/i,
+      /\bseries?\b/i,  // volta mas com \b (word boundary)
+    ],
   },
   {
-    category: 'series',
-    patterns: [/seri/i, /series/i, /novela/i, /temporada/i, /season/i, /vod.*seri/i],
+    category: 'filmes',
+    patterns: [
+      /\bfilm/i, 
+      /\bmovie/i, 
+      /\bcinema/i, 
+      /\bpelicul/i,
+    ],
   },
   {
     category: 'esportes',
@@ -84,6 +96,12 @@ function classifyGroup(groupName: string): UICategory {
     }
   }
 
+  // Fallback: se tem VOD no grupo, assume filme (maioria é filme)
+  const lower = cleaned.toLowerCase()
+  if (lower.includes('vod')) {
+    return 'filmes'
+  }
+
   return 'outros'
 }
 
@@ -113,6 +131,11 @@ export function normalizeGroups(
 
   for (const [groupName, channels] of Object.entries(rawGroups)) {
     const category = classifyGroup(groupName)
+    
+    // Log dos primeiros 5 grupos para debug
+    if (Object.keys(rawGroups).indexOf(groupName) < 5) {
+      console.log(`[CategoryMapper] "${groupName}" → ${category} (${channels.length} canais)`)
+    }
 
     if (category === 'outros') {
       unclassified += channels.length

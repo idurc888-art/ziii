@@ -22,7 +22,7 @@ rm -f ziiiTV.wgt
 $TIZEN package -t wgt -s $CERT -o . -- .
 
 echo "▶ Conectando TV..."
-$SDB connect 10.0.0.100:26101
+$SDB connect 10.0.0.101:26101
 
 echo "▶ Instalando na TV..."
 $TIZEN install -n ziiiTV.wgt -t $TV

@@ -132,8 +132,16 @@ class ContentCatalogClass {
 
   // ─── Pegar pool de uma categoria ─────────────────
   getPool(cat: UICategory, minScore = 0): Channel[] {
-    return (this.catalog.get(cat) ?? [])
+    const channels = (this.catalog.get(cat) ?? [])
       .filter(ch => (ch.score ?? 0) >= minScore)
+    
+    // Ordena por ano (mais recente primeiro) e depois por score
+    return channels.sort((a, b) => {
+      const yearA = a.tmdb?.year ? parseInt(a.tmdb.year) : 0
+      const yearB = b.tmdb?.year ? parseInt(b.tmdb.year) : 0
+      if (yearB !== yearA) return yearB - yearA
+      return (b.score ?? 0) - (a.score ?? 0)
+    })
   }
 
   // ─── Search Pool via Regex (ex: achar todos Premiere no esportes) ──

@@ -10,17 +10,20 @@ App IPTV para Samsung Tizen 4.0+ (TV UN50RU7100GXZD) que carrega playlists M3U, 
 - Shaka Player (HLS/DASH) + AVPlay (fallback .ts)
 - Zustand + Web Worker (fallback thread principal)
 
-## Status Atual (18/04/2026 10:02)
-✅ **FASE 2 COMPLETA** — Home organizada por streaming + zero duplicatas
-- Layout Netflix-like funcionando na TV
-- Hero banner com 5 slides (Stranger Things primeiro)
-- **Home organizada por streaming**: Netflix, Amazon, HBO, Disney+ (filmes e séries separados)
-- **Limpeza agressiva de nomes**: remove anos, "O Filme", "Parte X", etc
-- **DebugOverlay lateral retrátil**: F1 toggle, F2 limpar
-- Descrição abaixo do card focado (3 linhas, Inter font, largura 55%)
-- Preview da próxima row visível
-- Cache persiste entre sessões (IndexedDB validado)
-- Navegação D-pad (Enter, Back, F1, F2)
+## Status Atual (21/04/2026 09:14)
+✅ **VIDEO PREVIEW NOS CARDS IMPLEMENTADO**
+- Preview de vídeo **dentro do card** (estilo Netflix)
+- Toca instantaneamente quando foca, com som
+- Começa em 4 minutos (`#t=240`)
+- Hero Banner preview desabilitado (eliminou piscadas)
+- Gestão automática de memória (React lifecycle)
+
+**Detalhes técnicos:**
+- `<video>` renderiza só quando `isFocused && ch.activeStream?.url`
+- `autoPlay + loop + playsInline` (sem `muted`)
+- `#t=240` na URL para seek instantâneo no servidor
+- zIndex 5 (acima de backdrop/poster)
+- Troca de card: desmonta vídeo anterior automaticamente
 
 ## Decisões Técnicas Críticas
 1. **Vite 4 em vez de Vite 8** — Rolldown não gera código compatível com Chromium 56/63
@@ -69,8 +72,9 @@ App IPTV para Samsung Tizen 4.0+ (TV UN50RU7100GXZD) que carrega playlists M3U, 
 - `src/store/channelsStore.ts` — estados explícitos + proteção contra reprocessamento
 
 ## Próximos Passos
-1. **Implementar tela de Canais** (TV ao vivo separada da home)
-2. **Melhorar detecção de streaming** (usar group-title da playlist)
-3. **Adicionar filtros por gênero** (TMDB genres)
-4. **Implementar busca** (search screen)
-5. **Otimizações de performance** (virtualização de listas)
+1. **Ajustar preview de vídeo** (volume, tempo de início, fallbacks)
+2. **Implementar tela de Canais** (TV ao vivo separada da home)
+3. **Melhorar detecção de streaming** (usar group-title da playlist)
+4. **Adicionar filtros por gênero** (TMDB genres)
+5. **Implementar busca** (search screen)
+6. **Otimizações de performance** (virtualização de listas)

@@ -43,7 +43,7 @@ export function HeroBanner({
   hideUI = false,
   heroAutoplay,
 }: HeroBannerProps) {
-  console.log('[HeroBanner] Render:', { slidesCount: slides.length, focused, autoPlayInterval })
+  // Logs removidos — blocking no Chromium 63 do Tizen
   
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(autoPlayInterval > 0);
@@ -57,21 +57,15 @@ export function HeroBanner({
   const currentSlideValid = slides[currentIndex];
   // Usa o channel do slide se não houver override
   const activeChannel = previewOverrideChannel || currentSlideValid?.channel || null;
-  const nextSlideValid    = slides[(currentIndex + 1) % Math.max(slides.length, 1)];
+  // Hero autoplay: DESABILITADO temporariamente para evitar piscada
+  const heroAutoplayActive = false;
 
-  // Hero autoplay: ativa para qualquer slide focado que tenha canal real e URL
-  const channelHasUrl = activeChannel && (activeChannel.activeStream?.url || activeChannel.streams?.length > 0);
-  const heroAutoplayActive = !!heroAutoplay && !!channelHasUrl && focused;
 
-  console.log('[HeroBanner] heroAutoplay:', heroAutoplay)
-  console.log('[HeroBanner] currentIndex:', currentIndex)
-  console.log('[HeroBanner] focused:', focused)
-  console.log('[HeroBanner] heroAutoplayActive:', heroAutoplayActive)
 
   const { videoStyle, backdropStyle, activePlayerId } = useStreamPreview(
-    activeChannel,
-    nextSlideValid?.channel || null,
-    true,
+    null, // activeChannel desabilitado
+    null, // nextSlideValid?.channel || null desabilitado
+    false, // preview desabilitado
     {
       idleDelay: 800,
       fadeDuration: 350,

@@ -87,8 +87,8 @@ const FOCUS_SCALE    = 1.05
 const FOCUS_DURATION = 350
 const FOCUS_EASING   = 'cubic-bezier(0.25, 1, 0.5, 1)'
 const UNFOCUS_OPACITY = 1
-const FOCUS_GLOW     = '0 0 24px rgba(255,0,110,0.6), 0 0 60px rgba(255,0,110,0.25)'
-const FOCUS_BORDER   = `4px solid #ff006e`
+const FOCUS_GLOW = '0 0 20px rgba(255,0,110,0.5), 0 0 40px rgba(255,0,110,0.2), 0 0 60px rgba(255,0,110,0.1), inset 0 0 0 3px #000'
+const FOCUS_BORDER = `3px solid #ff006e`
 
 // ─── State Persistence ──────────────────────────────────────────────────────
 const STATE_KEY = 'ziiiTV_homeState'
@@ -121,6 +121,10 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const [isLoadingContent, setIsLoadingContent] = useState(false)
   const [content, setContent] = useState<ScreenContent | null>(null)
   const [heroSlides, setHeroSlides] = useState<HeroSlide[]>(mockHeroSlides)
+  const [heroAutoplayReady, setHeroAutoplayReady] = useState(false)
+  
+  // ─── Lazy Loading: renderiza só rows visíveis + buffer ───────────────
+  const [maxRenderedRow, setMaxRenderedRow] = useState(3) // Renderiza primeiras 3 rows
 
   // ─── Responsive viewport scale (base 1920px) ───────────────────────
   const [vw, setVw] = useState(() =>
@@ -132,9 +136,29 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  // ─── Content cache per view (troca de aba instantânea) ──────────────
+  const contentCache = useRef<Partial<Record<DashboardView, ScreenContent>>>({})
+
   // ─── Load content ──────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false
+
+    // Cache hit: retorna instantâneo
+    const cached = contentCache.current[activeView]
+    if (cached) {
+      setContent(cached)
+      setIsLoadingContent(false)
+      setContentRow(0)
+      setMaxRenderedRow(3) // ★ Reset lazy loading
+      setContentCols(prev => {
+        if (prev.length === cached.rows.length) return prev
+        return new Array(cached.rows.length).fill(0)
+      })
+      // Rebuild hero slides from cache
+      setHeroSlides(buildHeroSlidesFromData(cached, activeView))
+      return
+    }
+
     setIsLoadingContent(true)
     const load = async () => {
       let data: ScreenContent
@@ -145,67 +169,80 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         default:       data = await buildHomeContent(groups);   break
       }
       if (!cancelled) {
+        contentCache.current[activeView] = data  // Salva no cache
         setContent(data)
         setIsLoadingContent(false)
         setContentRow(0)
+        setMaxRenderedRow(3) // ★ Reset lazy loading
         setContentCols(prev => {
           if (prev.length === data.rows.length) return prev
           return new Array(data.rows.length).fill(0)
         })
-
-        if (activeView === 'home') {
-          // Hero da home a partir de data.heroChannels + tmdb real
-          setHeroSlides(
-            data.heroChannels.map((ch, idx) => {
-              const tmdb = data.heroTmdb.get(ch.name)
-              return {
-                id: `home-${idx}`,
-                title: tmdb?.title || ch.name,
-                subtitle: ch.group || 'destaque',
-                description: tmdb?.overview || `Assista ${ch.name} com a melhor qualidade na ziiiTV.`,
-                badge: 'Em destaque',
-                backgroundImage: tmdb?.backdrop
-                  ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop}`
-                  : (ch.logo || `https://picsum.photos/1920/1080?random=${idx + 300}`),
-                type: 'channel',
-                channel: ch,
-              } as HeroSlide
-            })
-          )
-        } else if (activeView === 'live') {
-          setHeroSlides(data.heroChannels.map((ch, idx) => ({
-            id: `slide-${idx}`,
-            title: ch.name,
-            subtitle: ch.group,
-            description: `Assista ${ch.name} ao vivo na ziiiTV.`,
-            badge: 'Ao Vivo',
-            backgroundImage: ch.logo || `https://picsum.photos/1920/1080?random=${idx + 100}`,
-            type: 'live',
-            channel: ch
-          })))
-        } else {
-          setHeroSlides(data.heroChannels.map((ch, idx) => {
-            const tmdb = data.heroTmdb.get(ch.name)
-            return {
-              id: `slide-${idx}`,
-              title: tmdb?.title || ch.name,
-              subtitle: activeView === 'movies' ? 'Filme' : 'Série',
-              description: tmdb?.overview || `Assista ${ch.name} com a melhor qualidade.`,
-              badge: 'Destaque',
-              backgroundImage: tmdb?.backdrop
-                ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop}`
-                : `https://picsum.photos/1920/1080?random=${idx + 200}`,
-              type: activeView === 'movies' ? 'movie' : 'series',
-              tmdbId: tmdb?.tmdbId || undefined,
-              channel: ch
-            }
-          }))
-        }
+        setHeroSlides(buildHeroSlidesFromData(data, activeView))
       }
     }
     load()
     return () => { cancelled = true }
   }, [groups, activeView])
+
+  // ─── Helper: build hero slides from ScreenContent ─────────────────────
+  function buildHeroSlidesFromData(data: ScreenContent, view: DashboardView): HeroSlide[] {
+    if (view === 'home') {
+      return data.heroChannels.map((ch, idx) => {
+        const tmdb = data.heroTmdb.get(ch.name)
+        return {
+          id: `home-${idx}`,
+          title: tmdb?.title || ch.name,
+          subtitle: ch.group || 'destaque',
+          description: tmdb?.overview || `Assista ${ch.name} com a melhor qualidade na ziiiTV.`,
+          badge: 'Em destaque',
+          backgroundImage: tmdb?.backdrop
+            ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop}`
+            : (ch.logo || `https://picsum.photos/1920/1080?random=${idx + 300}`),
+          type: 'channel' as const,
+          channel: ch,
+        }
+      })
+    } else if (view === 'live') {
+      return data.heroChannels.map((ch, idx) => ({
+        id: `slide-${idx}`,
+        title: ch.name,
+        subtitle: ch.group,
+        description: `Assista ${ch.name} ao vivo na ziiiTV.`,
+        badge: 'Ao Vivo',
+        backgroundImage: ch.logo || `https://picsum.photos/1920/1080?random=${idx + 100}`,
+        type: 'live' as const,
+        channel: ch
+      }))
+    } else {
+      return data.heroChannels.map((ch, idx) => {
+        const tmdb = data.heroTmdb.get(ch.name)
+        return {
+          id: `slide-${idx}`,
+          title: tmdb?.title || ch.name,
+          subtitle: view === 'movies' ? 'Filme' : 'Série',
+          description: tmdb?.overview || `Assista ${ch.name} com a melhor qualidade.`,
+          badge: 'Destaque',
+          backgroundImage: tmdb?.backdrop
+            ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop}`
+            : `https://picsum.photos/1920/1080?random=${idx + 200}`,
+          type: view === 'movies' ? 'movie' as const : 'series' as const,
+          tmdbId: tmdb?.tmdbId || undefined,
+          channel: ch
+        }
+      })
+    }
+  }
+
+  // ─── Delay heroAutoplay (não compete com boot da TV) ──────────────────
+  useEffect(() => {
+    if (!isLoadingContent && rows.length > 0) {
+      const t = setTimeout(() => setHeroAutoplayReady(true), 8000)
+      return () => clearTimeout(t)
+    } else {
+      setHeroAutoplayReady(false)
+    }
+  }, [isLoadingContent])
 
   const rows: ContentRow[] = content?.rows || []
   
@@ -288,9 +325,13 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         // A primeira linha nunca precisa de offset, e evita bug por conta do paddingTop animando
         wrapper.scrollTo({ top: 0, behavior: 'smooth' })
       } else {
-        const rowTop  = row.offsetTop
-        // subtraindo 8 para igualar perfeitamente os 8px de padding-top que a primeira linha tem
-        wrapper.scrollTo({ top: rowTop - 8, behavior: 'smooth' })
+        const rowTop = row.offsetTop
+        const wrapperHeight = wrapper.clientHeight
+        const rowHeight = row.clientHeight
+        
+        // Centraliza a row focada, deixando espaço para ver a próxima
+        const targetScroll = rowTop - (wrapperHeight - rowHeight) / 2 + 100
+        wrapper.scrollTo({ top: targetScroll, behavior: 'smooth' })
       }
     }
   }, [contentRow, focusZone])
@@ -409,7 +450,12 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           if (isGrid && c < 4 && rowData.channels.length > c + 4) {
             const next = [...cols]; next[rw] = c + 4; setContentCols(next)
           } else if (rw < allRows.length - 1) {
-            setContentRow(rw + 1)
+            const nextRow = rw + 1
+            setContentRow(nextRow)
+            // ★ Lazy loading: expande buffer quando usuário desce
+            if (nextRow >= maxRenderedRow - 1) {
+              setMaxRenderedRow(prev => Math.min(prev + 2, allRows.length))
+            }
           }
         } else if (isUp) {
           if (isGrid && c >= 4) {
@@ -590,7 +636,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             autoPlayInterval={0}
             focused={focusZone === 'hero'}
             hideUI={focusZone === 'content'}
-            heroAutoplay={activeView === 'home' ? heroAutoplayConfig : undefined}
+            heroAutoplay={activeView === 'home' && heroAutoplayReady ? heroAutoplayConfig : undefined}
             previewOverrideChannel={focusZone === 'content' ? debouncedPreview : undefined}
             previewOverrideImage={focusZone === 'content' && debouncedPreview && liveTmdbData[debouncedPreview.name]?.backdrop ? `https://image.tmdb.org/t/p/w1280${liveTmdbData[debouncedPreview.name]?.backdrop}` : undefined}
             onSelect={(slide) => {
@@ -637,6 +683,26 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           }}
         >
           {rows.map((row, rowIdx) => {
+            // ★ Lazy loading: só renderiza rows visíveis + buffer
+            if (rowIdx > maxRenderedRow) {
+              return (
+                <div key={rowIdx} style={{ height: 300, padding: '24px 80px' }}>
+                  <div style={{ 
+                    fontSize: 22, fontWeight: 800, color: 'rgba(255,255,255,0.3)',
+                    marginBottom: 12
+                  }}>
+                    {row.title}<span style={{ color: ACCENT }}>{row.titleAccent}</span>
+                  </div>
+                  <div style={{ 
+                    fontSize: 14, color: 'rgba(255,255,255,0.2)',
+                    fontStyle: 'italic'
+                  }}>
+                    Navegue para baixo para carregar...
+                  </div>
+                </div>
+              )
+            }
+            
             const isRowFocused = focusZone === 'content' && contentRow === rowIdx
             // Espaço mínimo para descrição + máxima prévia da próxima row
             const extraPadding = isRowFocused ? 0 : 0
@@ -651,12 +717,12 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   overflow: 'visible',
                   // Primeira row: padding mínimo para ficar mais perto do topo
                   // Demais rows: padding normal para quando scrollarem para o topo
-                  paddingTop: rowIdx === 0 ? '10px' : '100px'
+                  paddingTop: rowIdx === 0 ? '0px' : '100px'
                 }}
               >
                 <div style={{
                   padding: '0 80px', display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'center', marginBottom: 16,
+                  alignItems: 'center', marginBottom: 6,
                 }}>
                   <div style={{
                     fontSize: 22, fontWeight: 800, textTransform: 'lowercase',
@@ -717,11 +783,11 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                 return (
                   <div style={{
                     position: 'relative', width: '100%',
-                    height: CARD_H + 40,
-                    paddingTop: Math.round(12 * vw), overflow: 'hidden',
+                    height: CARD_H + 80,
+                    paddingTop: Math.round(40 * vw), overflow: 'visible',
                   }}>
                     <div style={{
-                      position: 'absolute', left: LEFT_PAD, top: Math.round(12 * vw),
+                      position: 'absolute', left: LEFT_PAD, top: Math.round(40 * vw),
                       display: 'flex', flexDirection: 'row',
                       alignItems: 'flex-start',
                       transform: `translate3d(${cameraShift}px, 0, 0)`,
@@ -755,6 +821,34 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                             border: isFocused ? FOCUS_BORDER : '1px solid rgba(255,255,255,0.08)',
                             background: '#111',
                           }}>
+                            {/* Video preview — toca quando focado */}
+                            {isFocused && ch.activeStream?.url && (
+                              <video
+                                src={ch.activeStream.url}
+                                autoPlay
+                                loop
+                                playsInline
+                                onCanPlay={(e) => {
+                                  const video = e.currentTarget
+                                  // Só faz seek se for VOD e seekable
+                                  if (video.seekable.length > 0 && video.duration > 240) {
+                                    video.currentTime = 240
+                                    console.log(`[VideoPreview] ${ch.name} → Seek para 240s (duration: ${Math.round(video.duration)}s)`)
+                                  } else {
+                                    console.log(`[VideoPreview] ${ch.name} → Sem seek (seekable: ${video.seekable.length}, duration: ${Math.round(video.duration)}s)`)
+                                  }
+                                }}
+                                onPlay={(e) => {
+                                  const video = e.currentTarget
+                                  console.log(`[VideoPreview] ${ch.name} → PLAYING at ${Math.round(video.currentTime)}s`)
+                                }}
+                                style={{
+                                  position: 'absolute', left: 0, top: 0,
+                                  width: WIDE_W, height: CARD_H, objectFit: 'cover',
+                                  zIndex: 5, display: 'block',
+                                }}
+                              />
+                            )}
                             {/* Backdrop wide — sempre presente (carregado, estático) */}
                             <img src={backdropSrc || undefined} style={{
                               position: 'absolute', left: 0, top: 0,
@@ -774,6 +868,32 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                               background: 'linear-gradient(transparent, rgba(0,0,0,0.92))',
                               zIndex: 3,
                             }} />
+                            
+                            {/* Título dentro do card (parte inferior) */}
+                            <div style={{
+                              position: 'absolute', bottom: 12, left: 12, right: 12,
+                              zIndex: 4,
+                              fontFamily: (() => {
+                                const fonts = [
+                                  'Inter, sans-serif',
+                                  'Outfit, sans-serif',
+                                  'Barlow Condensed, sans-serif',
+                                  'Georgia, serif',
+                                  'Courier New, monospace',
+                                ]
+                                return fonts[ci % fonts.length]
+                              })(),
+                              fontSize: isFocused ? 72 : 14,
+                              fontWeight: 700,
+                              color: '#fff',
+                              textShadow: '0 4px 12px rgba(0,0,0,0.9)',
+                              lineHeight: 1.1,
+                              wordWrap: 'break-word',
+                              whiteSpace: 'normal',
+                            }}>
+                              {ch.name.replace(/[\[\]\{\}\(\)]/g, '').trim()}
+                            </div>
+                            
                             {/* Logo do Canal/Streaming (visivel apenas no card Wide) */}
                             {isFocused && ch.logo && (
                               <img src={ch.logo} style={{
@@ -823,46 +943,104 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                 const overview = tmdb?.overview || ''
                 const genres = (tmdb as any)?.genres?.slice(0, 2).join(' • ') || ''
                 
-                const metaParts = []
-                if (genres) metaParts.push(genres)
-                if (year) metaParts.push(year)
-                const metaLine = metaParts.join(' • ')
+                // Divide overview em 3 linhas (aproximado)
+                const words = (overview || 'Descrição não disponível.').split(' ')
+                const wordsPerLine = Math.ceil(words.length / 3)
+                const line1 = words.slice(0, wordsPerLine).join(' ')
+                const line2 = words.slice(wordsPerLine, wordsPerLine * 2).join(' ')
+                const line3 = words.slice(wordsPerLine * 2).join(' ')
                 
                 return (
                   <div 
                     key={fch.id}
                     style={{
-                      padding: '5px 80px 0',
-                      animation: 'fadeInHero 300ms ease-out',
+                      padding: '0 80px 0',
                       minHeight: '100px',
+                      marginTop: '-10px',
                     }}>
-                    <div style={{
-                      fontFamily: 'Inter, sans-serif',
-                      fontSize: 20,
-                      color: '#fff',
-                      fontWeight: 500,
-                      marginBottom: 8,
-                      letterSpacing: '0.3px',
-                      transition: 'opacity 200ms ease-in-out',
-                    }}>
-                      {metaLine || 'Filme • 2024'}
+                    <style>{`
+                      @keyframes typewriter {
+                        from { width: 0; }
+                        to { width: 100%; }
+                      }
+                      @keyframes fadeIn {
+                        to { opacity: 1; }
+                      }
+                      .typewriter-line {
+                        overflow: hidden;
+                        white-space: nowrap;
+                        opacity: 0;
+                      }
+                      .typewriter-line-1 {
+                        animation: typewriter 0.6s steps(30) forwards, fadeIn 0.1s forwards;
+                        animation-delay: 0s, 0s;
+                      }
+                      .typewriter-line-2 {
+                        animation: typewriter 0.6s steps(30) forwards, fadeIn 0.1s forwards;
+                        animation-delay: 0.6s, 0.6s;
+                      }
+                      .typewriter-line-3 {
+                        animation: typewriter 0.6s steps(30) forwards, fadeIn 0.1s forwards;
+                        animation-delay: 1.2s, 1.2s;
+                      }
+                    `}</style>
+                    
+                    {/* Tags minimalistas com cores */}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                      {genres && genres.split(' • ').map((g: string, i: number) => {
+                        const colors = [
+                          { bg: 'rgba(255, 107, 107, 0.15)', border: 'rgba(255, 107, 107, 0.4)', text: '#ff6b6b' }, // vermelho
+                          { bg: 'rgba(255, 179, 217, 0.15)', border: 'rgba(255, 179, 217, 0.4)', text: '#ffb3d9' }, // rosa
+                          { bg: 'rgba(138, 201, 255, 0.15)', border: 'rgba(138, 201, 255, 0.4)', text: '#8ac9ff' }, // azul
+                          { bg: 'rgba(255, 214, 102, 0.15)', border: 'rgba(255, 214, 102, 0.4)', text: '#ffd666' }, // amarelo
+                          { bg: 'rgba(129, 236, 236, 0.15)', border: 'rgba(129, 236, 236, 0.4)', text: '#81ecec' }, // ciano
+                        ]
+                        const color = colors[i % colors.length]
+                        return (
+                          <div key={i} style={{
+                            background: color.bg,
+                            border: `1px solid ${color.border}`,
+                            borderRadius: 6,
+                            padding: '4px 12px',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            color: color.text,
+                            fontFamily: 'Inter, sans-serif',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                          }}>
+                            {g}
+                          </div>
+                        )
+                      })}
+                      {year && (
+                        <div style={{
+                          background: 'rgba(168, 85, 247, 0.15)',
+                          border: '1px solid rgba(168, 85, 247, 0.4)',
+                          borderRadius: 6,
+                          padding: '4px 12px',
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: '#a855f7',
+                          fontFamily: 'Inter, sans-serif',
+                        }}>
+                          {year}
+                        </div>
+                      )}
                     </div>
                     
                     <div style={{
                       fontFamily: 'Inter, sans-serif',
-                      fontSize: 21,
-                      color: '#d4d4d4',
+                      fontSize: 23,
+                      color: '#ffb3d9',
                       lineHeight: 1.5,
-                      fontWeight: 400,
+                      fontWeight: 300,
                       maxWidth: '55%',
-                      display: '-webkit-box',
-                      WebkitLineClamp: 3,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      transition: 'opacity 200ms ease-in-out',
+                      textShadow: '0 0 20px rgba(255, 179, 217, 0.4)',
                     }}>
-                      {overview || 'Descrição não disponível.'}
+                      <div className="typewriter-line typewriter-line-1">{line1}</div>
+                      <div className="typewriter-line typewriter-line-2">{line2}</div>
+                      <div className="typewriter-line typewriter-line-3">{line3}</div>
                     </div>
                   </div>
                 )

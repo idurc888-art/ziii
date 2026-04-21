@@ -129,7 +129,9 @@ function cleanName(name: string): string {
 
 // ─── Camada 3: Fetch TMDB API ───────────────────────────────────────────────
 
-async function fetchTMDB(query: string, type: 'movie' | 'tv'): Promise<TMDBResult | null> {
+// Versão COMPLETA: 2 requests (search + detail com credits/videos)
+// Usada on-demand quando o usuário entra no player de um título
+export async function fetchTMDB(query: string, type: 'movie' | 'tv'): Promise<TMDBResult | null> {
   const endpoint = type === 'movie' ? '/search/movie' : '/search/tv'
   const searchUrl = `${BASE_URL}${endpoint}?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`
 
@@ -199,11 +201,57 @@ async function fetchTMDB(query: string, type: 'movie' | 'tv'): Promise<TMDBResul
   }
 }
 
+// ─── Versão RÁPIDA: 1 request por canal (só search, sem details) ────────────
+// Usada no warmup e carregamento inicial. Retorna poster+backdrop+overview.
+// Detalhes completos (créditos, trailers) são buscados on-demand no player.
+
+async function fetchTMDBFast(query: string, type: 'movie' | 'tv'): Promise<TMDBResult | null> {
+  const endpoint = type === 'movie' ? '/search/movie' : '/search/tv'
+  const searchUrl = `${BASE_URL}${endpoint}?api_key=${API_KEY}&query=${encodeURIComponent(query)}&language=pt-BR`
+
+  try {
+    const res = await fetch(searchUrl)
+    if (!res.ok) {
+      if (res.status === 429) {
+        await new Promise(r => setTimeout(r, 2000))
+        return fetchTMDBFast(query, type)
+      }
+      return null
+    }
+
+    const data = await res.json()
+    const item = data.results?.[0]
+    if (!item) return null
+
+    const posterPath   = item.poster_path
+    const backdropPath = item.backdrop_path
+
+    return {
+      poster:      posterPath   ? `${IMG_BASE}${POSTER_SIZE}${posterPath}`   : '',
+      backdrop:    backdropPath ? `${IMG_BASE}${BACKDROP_SIZE}${backdropPath}` : '',
+      posterFull:  posterPath   ? `${IMG_BASE}/w500${posterPath}`   : '',
+      backdropFull: backdropPath ? `${IMG_BASE}/w1280${backdropPath}` : '',
+      overview:    item.overview || '',
+      rating:      item.vote_average || 0,
+      voteCount:   item.vote_count || 0,
+      popularity:  item.popularity || 0,
+      year:        (item.release_date || item.first_air_date || '').substring(0, 4),
+      title:       item.title || item.name || query,
+      tmdbId:      item.id || 0,
+      mediaType:   type,
+      trailerKey:  '',
+    }
+  } catch (e) {
+    console.warn(`[TMDB] Erro ao buscar rápido "${query}":`, e)
+    return null
+  }
+}
+
 // ─── API Pública ────────────────────────────────────────────────────────────
 
 /**
- * Enriquece um canal com dados TMDB.
- * Fluxo: Memory → IndexedDB (TTL) → API (movie, fallback tv)
+ * Enriquece um canal com dados TMDB (versão RÁPIDA — 1 request).
+ * Fluxo: Memory → IndexedDB (TTL) → API (search movie, fallback tv)
  * Retorna null se não encontrou nada.
  */
 export async function enrichChannel(channelName: string): Promise<TMDBResult | null> {
@@ -221,17 +269,17 @@ export async function enrichChannel(channelName: string): Promise<TMDBResult | n
     return idbEntry.data
   }
 
-  // ─── Camada 3: Fetch API ────────────────────────────────────────
+  // ─── Camada 3: Fetch API (FAST — 1 request) ────────────────────
   const cleaned = cleanName(channelName)
   if (!cleaned || cleaned.length < 2) {
     memoryCache.set(cacheKey, null)
     return null
   }
 
-  // Tenta movie primeiro, fallback tv
-  let result = await fetchTMDB(cleaned, 'movie')
+  // Tenta movie primeiro, fallback tv (1 request cada)
+  let result = await fetchTMDBFast(cleaned, 'movie')
   if (!result) {
-    result = await fetchTMDB(cleaned, 'tv')
+    result = await fetchTMDBFast(cleaned, 'tv')
   }
 
   // Salva nas duas camadas (mesmo null, para não repetir busca)
