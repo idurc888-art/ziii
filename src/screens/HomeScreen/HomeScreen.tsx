@@ -84,11 +84,21 @@ const CATEGORY_ICONS: Record<string, { emoji: string; color: string }> = {
 }
 
 const FOCUS_SCALE    = 1.05
-const FOCUS_DURATION = 350
+const FOCUS_DURATION = 250
 const FOCUS_EASING   = 'cubic-bezier(0.25, 1, 0.5, 1)'
 const UNFOCUS_OPACITY = 1
 const FOCUS_GLOW = '0 0 20px rgba(255,0,110,0.5), 0 0 40px rgba(255,0,110,0.2), 0 0 60px rgba(255,0,110,0.1), inset 0 0 0 3px #000'
 const FOCUS_BORDER = `3px solid #ff006e`
+
+// ─── Pre-computed constants (avoid IIFE in render) ───
+const CARD_FONTS = [
+  'Inter, sans-serif',
+  'Outfit, sans-serif',
+  'Barlow Condensed, sans-serif',
+  'Georgia, serif',
+  'Courier New, monospace',
+]
+const VIDEO_PREVIEW_DELAY = 1500 // ms — Netflix-style: espera 1.5s parado antes de tocar
 
 // ─── State Persistence ──────────────────────────────────────────────────────
 const STATE_KEY = 'ziiiTV_homeState'
@@ -122,6 +132,11 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const [content, setContent] = useState<ScreenContent | null>(null)
   const [heroSlides, setHeroSlides] = useState<HeroSlide[]>(mockHeroSlides)
   const [heroAutoplayReady, setHeroAutoplayReady] = useState(false)
+
+  // ─── Video Preview Inteligente (Netflix-style) ─────────────────────
+  const videoPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [previewTarget, setPreviewTarget] = useState<{ rowIdx: number; colIdx: number; url: string } | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
   
   // ─── Block Rendering Progressivo (Tizen-safe) ──────────────────────
   // Bloco 1: Hero + primeiras 3 rows (instantâneo)
@@ -148,6 +163,30 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       return () => clearTimeout(timer)
     }
   }, [isLoadingContent, content, maxRenderedRow])
+
+  // ─── Video Preview: cancela debounce ao navegar ────────────────────
+  useEffect(() => {
+    // Quando o usuário navega (muda row ou coluna), cancela preview pendente
+    if (videoPreviewTimer.current) {
+      clearTimeout(videoPreviewTimer.current)
+      videoPreviewTimer.current = null
+    }
+    // Limpa preview ativo ao mudar de row
+    setPreviewTarget(null)
+    // Limpa elemento de vídeo para liberar decoder
+    if (videoRef.current) {
+      videoRef.current.pause()
+      videoRef.current.removeAttribute('src')
+      videoRef.current.load()
+    }
+  }, [contentRow, contentCols])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (videoPreviewTimer.current) clearTimeout(videoPreviewTimer.current)
+    }
+  }, [])
 
   // ─── Responsive viewport scale (base 1920px) ───────────────────────
   const [vw, setVw] = useState(() =>
@@ -775,12 +814,13 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                         display: 'flex', flexDirection: 'column',
                         alignItems: 'center', justifyContent: 'center', gap: 12,
                         fontSize: 18, fontWeight: 700, textTransform: 'lowercase',
-                        transformOrigin: 'center center', willChange: 'transform',
+                        transformOrigin: 'center center',
+                        willChange: focused ? 'transform' : 'auto',
                         transform: focused ? `scale(${FOCUS_SCALE}) translateY(-8px)` : 'scale(1) translateY(0)',
                         boxShadow: focused ? `0 8px 32px rgba(0,0,0,0.55)` : 'none',
                         zIndex: focused ? 10 : 0,
                         opacity: focused ? 1 : UNFOCUS_OPACITY,
-                        transition: `transform ${FOCUS_DURATION}ms ${FOCUS_EASING}, box-shadow ${FOCUS_DURATION}ms ${FOCUS_EASING}, opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}, border-color ${FOCUS_DURATION}ms ${FOCUS_EASING}, background-color ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
+                        transition: `transform ${FOCUS_DURATION}ms ${FOCUS_EASING}, box-shadow ${FOCUS_DURATION}ms ${FOCUS_EASING}, opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
                         cursor: 'pointer',
                       }}>
                         <span style={{ fontSize: 28 }}>{info.emoji}</span>
@@ -817,7 +857,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                       alignItems: 'flex-start',
                       transform: `translate3d(${cameraShift}px, 0, 0)`,
                       transition: `transform ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
-                      willChange: 'transform',
+                      willChange: isRowFocused ? 'transform' : 'auto',
                     }}>
                       {row.channels.map((ch, ci) => {
                         const diffCols = ci - focusedIndex
@@ -846,42 +886,52 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                             border: isFocused ? FOCUS_BORDER : '1px solid rgba(255,255,255,0.08)',
                             background: '#111',
                           }}>
-                            {/* Video preview — toca quando focado */}
-                            {isFocused && ch.activeStream?.url && (
-                              <video
-                                src={ch.activeStream.url}
-                                autoPlay
-                                loop
-                                playsInline
-                                onCanPlay={(e) => {
-                                  const video = e.currentTarget
-                                  // Só faz seek se for VOD e seekable
-                                  if (video.seekable.length > 0 && video.duration > 240) {
-                                    video.currentTime = 240
-                                    console.log(`[VideoPreview] ${ch.name} → Seek para 240s (duration: ${Math.round(video.duration)}s)`)
-                                  } else {
-                                    console.log(`[VideoPreview] ${ch.name} → Sem seek (seekable: ${video.seekable.length}, duration: ${Math.round(video.duration)}s)`)
-                                  }
-                                }}
-                                onPlay={(e) => {
-                                  const video = e.currentTarget
-                                  console.log(`[VideoPreview] ${ch.name} → PLAYING at ${Math.round(video.currentTime)}s`)
-                                }}
-                                style={{
-                                  position: 'absolute', left: 0, top: 0,
-                                  width: WIDE_W, height: CARD_H, objectFit: 'cover',
-                                  zIndex: 5, display: 'block',
-                                }}
-                              />
-                            )}
+                            {/* Video Preview Inteligente (Netflix-style: 1.5s debounce) */}
+                            {(() => {
+                              // Agenda preview quando card recebe foco
+                              if (isFocused && ch.activeStream?.url) {
+                                // Agenda debounce se ainda não está agendado para este card
+                                if (!previewTarget || previewTarget.rowIdx !== rowIdx || previewTarget.colIdx !== ci) {
+                                  if (videoPreviewTimer.current) clearTimeout(videoPreviewTimer.current)
+                                  videoPreviewTimer.current = setTimeout(() => {
+                                    setPreviewTarget({ rowIdx, colIdx: ci, url: ch.activeStream!.url })
+                                  }, VIDEO_PREVIEW_DELAY)
+                                }
+                              }
+                              // Renderiza vídeo apenas se preview ativo para ESTE card
+                              const isPreviewActive = previewTarget?.rowIdx === rowIdx && previewTarget?.colIdx === ci
+                              if (!isPreviewActive) return null
+                              return (
+                                <video
+                                  ref={videoRef}
+                                  key={`preview-${rowIdx}-${ci}`}
+                                  src={previewTarget.url}
+                                  autoPlay
+                                  loop
+                                  playsInline
+                                  className="video-preview-fade"
+                                  onCanPlay={(e) => {
+                                    const video = e.currentTarget
+                                    if (video.seekable.length > 0 && video.duration > 240) {
+                                      video.currentTime = 240
+                                    }
+                                  }}
+                                  style={{
+                                    position: 'absolute', left: 0, top: 0,
+                                    width: WIDE_W, height: CARD_H, objectFit: 'cover',
+                                    zIndex: 5, display: 'block',
+                                  }}
+                                />
+                              )
+                            })()}
                             {/* Backdrop wide — sempre presente (carregado, estático) */}
-                            <img src={backdropSrc || undefined} style={{
+                            <img src={backdropSrc || undefined} loading="lazy" style={{
                               position: 'absolute', left: 0, top: 0,
                               width: WIDE_W, height: CARD_H, objectFit: 'cover',
                               zIndex: 1, display: 'block',
                             }} />
                             {/* Poster portrait — some INSTANTANEAMENTE quando focado (sem transition) */}
-                            <img src={posterSrc || undefined} style={{
+                            <img src={posterSrc || undefined} loading="lazy" style={{
                               position: 'absolute', left: 0, top: 0,
                               width: CARD_W, height: CARD_H, objectFit: 'cover',
                               zIndex: 2, display: 'block',
@@ -898,16 +948,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                             <div style={{
                               position: 'absolute', bottom: 12, left: 12, right: 12,
                               zIndex: 4,
-                              fontFamily: (() => {
-                                const fonts = [
-                                  'Inter, sans-serif',
-                                  'Outfit, sans-serif',
-                                  'Barlow Condensed, sans-serif',
-                                  'Georgia, serif',
-                                  'Courier New, monospace',
-                                ]
-                                return fonts[ci % fonts.length]
-                              })(),
+                              fontFamily: CARD_FONTS[ci % CARD_FONTS.length],
                               fontSize: isFocused ? 72 : 14,
                               fontWeight: 700,
                               color: '#fff',
@@ -983,32 +1024,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                       minHeight: '100px',
                       marginTop: '-10px',
                     }}>
-                    <style>{`
-                      @keyframes typewriter {
-                        from { width: 0; }
-                        to { width: 100%; }
-                      }
-                      @keyframes fadeIn {
-                        to { opacity: 1; }
-                      }
-                      .typewriter-line {
-                        overflow: hidden;
-                        white-space: nowrap;
-                        opacity: 0;
-                      }
-                      .typewriter-line-1 {
-                        animation: typewriter 0.6s steps(30) forwards, fadeIn 0.1s forwards;
-                        animation-delay: 0s, 0s;
-                      }
-                      .typewriter-line-2 {
-                        animation: typewriter 0.6s steps(30) forwards, fadeIn 0.1s forwards;
-                        animation-delay: 0.6s, 0.6s;
-                      }
-                      .typewriter-line-3 {
-                        animation: typewriter 0.6s steps(30) forwards, fadeIn 0.1s forwards;
-                        animation-delay: 1.2s, 1.2s;
-                      }
-                    `}</style>
+                    {/* Keyframes movidos para index.css (elimina re-parse a cada render) */}
                     
                     {/* Tags minimalistas com cores */}
                     <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>

@@ -335,48 +335,89 @@ export async function buildSeriesContent(_groups: NormalizedGroups): Promise<Scr
 // TV AO VIVO
 // ═══════════════════════════════════════════════════════════════════
 export async function buildTvContent(_groups: NormalizedGroups): Promise<ScreenContent> {
+  const t0 = performance.now()
+  console.log('[ContentSelector] buildTvContent iniciado')
   ContentCatalog.resetUsed()
   
-  const heroChannels = ContentCatalog.getPool('abertos').slice(0, 5)
+  let rows: ContentRow[] = []
 
-  const rows = buildRows([
-    {
-      type: 'wide',
-      title: '⚽ Jogos & ',
-      titleAccent: 'Campeonatos',
-      channels: ContentCatalog.searchPool('esportes', /( x | \/ | - )|(libertadores|brasileir|champions|sulamericana)/i, 20)
-    },
-    {
-      type: 'portrait',
-      title: '🏟️ Rede ',
-      titleAccent: 'Premiere',
-      channels: ContentCatalog.searchPool('esportes', /premiere/i, 20)
-    },
-    {
-      type: 'portrait',
-      title: '🏆 ESPN & ',
-      titleAccent: 'SporTV',
-      channels: ContentCatalog.searchPool('esportes', /espn|sportv/i, 20)
-    },
-    {
-      type: 'portrait',
-      title: '🥊 Paramount, NBA & ',
-      titleAccent: 'Lutas',
-      channels: ContentCatalog.searchPool('esportes', /paramount|tnt|space|band|nba|ufc|combate/i, 20)
-    },
-    { 
-      type: 'simple', 
-      title: '⚡ Mais ', 
-      titleAccent: 'Esportes', 
-      channels: ContentCatalog.getPool('esportes').slice(0, 20) 
-    },
-    { 
-      type: 'simple', 
-      title: '📡 Canais ', 
-      titleAccent: 'Abertos', 
-      channels: ContentCatalog.getPool('abertos').slice(0, 20) 
-    },
+  // ─── 1. Histórico: "Continuar Assistindo" ───
+  const allChannelsMap = new Map<string, Channel>()
+  for (const list of Object.values(_groups)) {
+    for (const ch of list) allChannelsMap.set(ch.name, ch)
+  }
+  const historyEntries = getMostWatched(10)
+  const historyChannels = historyEntries
+    .map(h => allChannelsMap.get(h.name)!)
+    .filter(Boolean)
+
+  const fallbackNeeded = 10 - historyChannels.length
+  let mostWatchedPool = historyChannels
+  if (fallbackNeeded > 0) {
+    mostWatchedPool = [
+      ...historyChannels,
+      ...ContentCatalog.pickMix(['abertos', 'esportes', 'noticias'], fallbackNeeded, 0)
+    ]
+  }
+
+  if (mostWatchedPool.length > 0) {
+    rows.push({
+      type: 'wide' as const,
+      title: '🔥 Continuar ',
+      titleAccent: 'Assistindo',
+      channels: mostWatchedPool,
+      tmdb: new Map(),
+    })
+  }
+
+  // ─── 2. Pesquisa de Canais por Prioridade ───
+  const canais4k = [
+    ...ContentCatalog.searchPool('filmes', /4k|uhd/i, 10),
+    ...ContentCatalog.searchPool('esportes', /4k|uhd/i, 10),
+    ...ContentCatalog.searchPool('abertos', /4k|uhd/i, 10)
+  ]
+  const filmesLive = ContentCatalog.searchPool('filmes', /telecine|hbo|megapix|space|tnt|cinemax|fox/i, 20)
+  
+  const sportv = ContentCatalog.searchPool('esportes', /sportv/i, 20)
+  const espn = ContentCatalog.searchPool('esportes', /espn/i, 20)
+  const premiere = ContentCatalog.searchPool('esportes', /premiere|pfc/i, 20)
+  const lutas = ContentCatalog.searchPool('esportes', /combate|ufc|boxe/i, 20)
+  const abertos = ContentCatalog.getPool('abertos').slice(0, 20)
+  const jogosAoVivo = ContentCatalog.searchPool('esportes', /( x | \/ | - )|(libertadores|brasileir|champions|sulamericana)/i, 20)
+
+  const liveRows = buildRows([
+    { type: 'wide', title: '⚽ Jogos & ', titleAccent: 'Campeonatos', channels: jogosAoVivo },
+    { type: 'portrait', title: '🏆 ESPN & ', titleAccent: 'SporTV', channels: [...espn, ...sportv].slice(0, 20) },
+    { type: 'portrait', title: '🖥️ Canais em ', titleAccent: '4K', channels: canais4k.slice(0, 20) },
+    { type: 'portrait', title: '🏟️ Rede ', titleAccent: 'Premiere', channels: premiere },
+    { type: 'portrait', title: '🎬 Canais de ', titleAccent: 'Filmes', channels: filmesLive.length > 0 ? filmesLive : ContentCatalog.getPool('filmes').slice(0, 20) },
+    { type: 'simple', title: '📡 Canais ', titleAccent: 'Abertos', channels: abertos },
+    { type: 'portrait', title: '🥊 Combate & ', titleAccent: 'Lutas', channels: lutas },
+    { type: 'simple', title: '⚽ Mais ', titleAccent: 'Esportes', channels: ContentCatalog.getPool('esportes').slice(0, 20) },
+    { type: 'simple', title: '📰 Jornalismo & ', titleAccent: 'Notícias', channels: ContentCatalog.getPool('noticias').slice(0, 20) },
+    { type: 'simple', title: '🌍 Documentários & ', titleAccent: 'Natureza', channels: ContentCatalog.getPool('documentarios').slice(0, 20) },
+    { type: 'simple', title: '🧸 Canais ', titleAccent: 'Infantis', channels: ContentCatalog.getPool('infantil').slice(0, 20) },
   ])
 
-  return { heroChannels, heroTmdb: new Map(), rows }
+  rows.push(...liveRows)
+
+  // ─── 3. Hero Section ───
+  let heroChannels = [
+    ...sportv.slice(0, 1),
+    ...premiere.slice(0, 1),
+    ...espn.slice(0, 1),
+    ...abertos.slice(0, 2)
+  ]
+  if (heroChannels.length === 0) {
+    heroChannels = ContentCatalog.pickMix(['abertos', 'esportes'], 5, 0)
+  }
+
+  const heroTmdb = buildHeroTmdb(heroChannels)
+
+  // Enriquecimento e TMDB Cache
+  fillTmdbFromCache(rows)
+  backgroundEnrich(heroChannels, rows, heroTmdb)
+
+  console.log(`[ContentSelector] buildTvContent em ${(performance.now() - t0).toFixed(1)}ms — ${rows.length} rows`)
+  return { heroChannels, heroTmdb, rows }
 }
