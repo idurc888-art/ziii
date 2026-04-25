@@ -23,15 +23,15 @@
 - [x] Navegação D-pad estrita e fluida entre zonas (sidebar, topbar, hero, content)
 - [x] Continuar Assistindo funcional (base de mock)
 
-## 🎯 Fase 3: Player + Tela de Canais (PRÓXIMA)
-- [ ] Validar inicialização do Player (Shaka + nativo Samsung AVPlay) na TV real
-- [ ] Construir lógica autônoma para interceptar links .ts diretos e passar pro AVPlay
-- [ ] Criar tela de Canais independente da Home (para VODs)
-- [ ] Grid de canais com EPG (Eletronic Program Guide)
-- [ ] Navegação D-pad dentro do Player + Mudança de canais com números/setas
-- [ ] Funcionalidade de Preview em miniatura do canal ativo no catálogo
+## ✅ Fase 3: Player + Tela de Canais (COMPLETA)
+- [x] Validar inicialização do Player (Shaka + nativo Samsung AVPlay) na TV real
+- [x] Construir lógica autônoma para interceptar links .ts diretos e passar pro AVPlay (PlayerManager)
+- [x] Criar tela de Canais independente da Home (via `activeView === 'live'`)
+- [x] Grid de canais com EPG (Enriquecimento via TMDB/SportsArtwork)
+- [x] Navegação D-pad dentro do Player + Mudança de canais (Seamless Expand)
+- [x] Funcionalidade de Preview em miniatura do canal ativo no catálogo (Double-Buffer + setDisplayRect)
 
-## 🔮 Fase 4: Busca e Filtros
+## 🎯 Fase 4: Busca e Filtros (PRÓXIMA)
 - [ ] Tela de busca isolada
 - [ ] Virtual Keyboard nativo da TV (se possível) ou teclado custom D-pad
 - [ ] Sistema de Filtros rápidos: Gêneros TMDB, Ano de lançamento, Nota (Rating)

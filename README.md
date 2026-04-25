@@ -10,13 +10,13 @@ App IPTV para Samsung Tizen 4.0+ (TV UN50RU7100GXZD) que carrega playlists M3U, 
 - Shaka Player (HLS/DASH) + AVPlay (fallback .ts)
 - Zustand + Web Worker (fallback thread principal)
 
-## Status Atual (22/04/2026 13:50)
-✅ **DEPLOY FUNCIONANDO**
-- Certificado: `zi01` (Samsung VD, Partner CA, expira 2027/04/22)
-- TV IP: `10.0.0.100:26101`
-- DUID da TV: `00000002094ebbd4`
-- App ID: `2TDndgJZyN.ziiiTV`
-- PC IP: `10.0.0.103` (deve estar configurado no Developer Mode da TV)
+## Status Atual (25/04/2026 15:35)
+✅ **HARDWARE VIDEO PREVIEW & PLAYER MANAGER IMPLEMENTADOS**
+- Implementado `PlayerManager` (Singleton AVPlay) para gestão de hardware estável.
+- `HomeScreen` otimizada com layout Telvix e sliding window de 5 elementos.
+- Seamless Expand (Card → Fullscreen) funcional sem quebra de buffer.
+- Build & Deploy automatizado via `scripts/deploy/deploy.sh`.
+- TV IP: `10.0.0.100:26101` | App ID: `2TDndgJZyN.ziiiTV`
 
 ## Como Fazer Deploy
 ```bash

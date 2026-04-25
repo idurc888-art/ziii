@@ -40,13 +40,17 @@ function pickHeaviestStream(streams: Stream[]): Stream | null {
   )[0]
 }
 
+// INSET: margem interna para o vídeo ficar DENTRO da borda rosa (outline)
+// 8px de cada lado = vídeo não cobre a borda e fica visualmente contido
+const RECT_INSET = 8
+
 function getCardRect(el: HTMLElement): { x: number; y: number; w: number; h: number } {
   const rect = el.getBoundingClientRect()
   return {
-    x: Math.round(rect.left),
-    y: Math.round(rect.top),
-    w: Math.round(rect.width),
-    h: Math.round(rect.height),
+    x: Math.round(rect.left + RECT_INSET),
+    y: Math.round(rect.top + RECT_INSET),
+    w: Math.round(rect.width - RECT_INSET * 2),
+    h: Math.round(rect.height - RECT_INSET * 2),
   }
 }
 
@@ -75,9 +79,34 @@ export function useCardAutoplay({
   useEffect(() => {
     if (!focused) {
       playerManager.cancelRequest()
+
+      const hole = document.getElementById('autoplay-punch-hole')
+      if (hole) hole.style.backgroundColor = '#000'
+      const img = document.getElementById('autoplay-punch-img')
+      if (img) {
+        img.style.opacity = '1'
+        img.style.visibility = 'visible'
+      }
+
       setState(IDLE)
       return
     }
+
+    // Troca de card enquanto focused: reseta thumbnail instantaneamente
+    // antes do debounce do novo preview (evita tela preta entre cards)
+    playerManager.cancelRequest()
+
+    // Vanilla JS Bypass: Tapa o buraco instantaneamente (0ms) antes do React
+    // Isso evita o lag de 1 frame que deixa o hardware player (preto) vazar pra UI!
+    const hole = document.getElementById('autoplay-punch-hole')
+    if (hole) hole.style.backgroundColor = '#000'
+    const img = document.getElementById('autoplay-punch-img')
+    if (img) {
+      img.style.opacity = '1'
+      img.style.visibility = 'visible'
+    }
+
+    setState(IDLE)
 
     const previewStream = pickLightestStream(streams)
     if (!previewStream) return
@@ -92,9 +121,13 @@ export function useCardAutoplay({
       return () => clearTimeout(timer)
     }
 
-    const rect = cardRef.current ? getCardRect(cardRef.current) : { x: 0, y: 0, w: 1920, h: 1080 }
+    // Função lazy: o rect é calculado DENTRO do debounce (1500ms após parar),
+    // quando a animação de transição do card já terminou. Evita rect errado.
+    const getRectFn = () => cardRef.current
+      ? getCardRect(cardRef.current)
+      : { x: 0, y: 0, w: 1920, h: 1080 }
 
-    playerManager.requestPlay(previewStream.url, mainStream.url, rect, {
+    playerManager.requestPlay(previewStream.url, mainStream.url, getRectFn, {
       onLoading: () => {
         if (mountedRef.current)
           setState({ playState: 'loading', thumbnailOpacity: 1, videoOpacity: 0 })

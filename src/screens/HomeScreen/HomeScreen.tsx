@@ -136,10 +136,12 @@ const MemoizedSideCard = React.memo<{
       border,
       background: '#111',
       transform: `translate3d(${translateX}px, 0px, 0px)`,
-      opacity: isUnderCenter ? 0 : (isFocused ? 1 : 0.6),
-      // Tizen Bug Fix: 'visibility: hidden' is strictly required for the hole-punch layer to completely ignore this node
-      // otherwise, Webkit might composite a 0-opacity RGB buffer over the hardware video layer!
-      visibility: isUnderCenter ? 'hidden' : 'visible',
+      // O side card no centro agora CONTINUA VISÍVEL durante o "idle" do preview!
+      // Ele só é encoberto pelo AutoplayCard (que ganha opacidade 1) quando o delay de 1.5s acaba!
+      opacity: isFocused ? 1 : 0.6,
+      // Tizen Bug Fix: 'visibility: hidden' para os fora de vista (se houver),
+      // mas os side cards vizinhos ficam visible
+      visibility: 'visible',
       // NETFLIX SLIDE: a chave agora é baseada no canal (ci), não no slot (offset)
       // Isso garante que cada canal tenha seu próprio DOM element que REALMENTE se move
       // quando o translateX muda. A CSS transition aqui ANIMA esse movimento.
@@ -209,6 +211,9 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const [content, setContent] = useState<ScreenContent | null>(null)
   const [heroSlides, setHeroSlides] = useState<HeroSlide[]>(mockHeroSlides)
   const [heroAutoplayReady] = useState(false)
+
+  // Derivado de content (precisa estar antes dos useEffect que o usam)
+  const rows: ContentRow[] = content?.rows || []
 
   // Cor dinâmica: verde para TV ao vivo, rosa para o resto
   const ACCENT = activeView === 'live' ? '#10b981' : '#ff006e'
@@ -284,6 +289,14 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       const sart = getSportsArtwork(ch.name)
       const src = sart?.poster || tmdbImg(t?.poster, 'w342') || tmdbImg(t?.backdrop, 'w342') || ch.logo
       if (src) { const img = new Image(); img.src = src }
+
+      // PRELOAD ADICIONAL (Prevenção de Quadrado Preto no AutoPlayCard)
+      // O central usa w780 nas imagens do TMDB, então pre-loadamos isso ativamente 
+      // para os 3 canais irmãos mais próximos!
+      if (Math.abs(offset) <= 2) {
+        const backSrc = sart?.backdrop || tmdbImg(t?.backdrop, 'w780') || src
+        if (backSrc) { const bimg = new Image(); bimg.src = backSrc }
+      }
     }
   }, [contentRow, contentCols, focusZone, rows])
 
@@ -406,8 +419,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       })
     }
   }
-
-  const rows: ContentRow[] = content?.rows || []
 
   const heroAutoplayConfig = {
     previewDuration: 30_000,

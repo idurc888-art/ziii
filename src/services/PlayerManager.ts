@@ -74,7 +74,9 @@ class PlayerManager {
   public requestPlay(
     previewUrl: string,
     _mainUrl: string,
-    rect: { x: number; y: number; w: number; h: number },
+    // Aceita função para calcular rect DENTRO do debounce
+    // Isso garante que getBoundingClientRect() é chamado DEPOIS da animação do card terminar
+    getRectFn: () => { x: number; y: number; w: number; h: number },
     callbacks: {
       onPlaying: () => void
       onFirstFrameRendered: () => void
@@ -88,9 +90,10 @@ class PlayerManager {
     }
 
     this.currentUrl = previewUrl
-    // this.mainUrl = mainUrl
 
     this.debounceTimer = setTimeout(() => {
+      // Calcula rect AGORA (após debounce de 1500ms, card já estabilizou)
+      const rect = getRectFn()
       callbacks.onLoading()
       this.executePlay(previewUrl, rect, callbacks)
     }, this.FOCUS_DELAY)
@@ -139,6 +142,7 @@ class PlayerManager {
 
     this.state = 'PREPARING'
     let isFirstFrameFired = false
+    let lastTimeUpdate = 0
 
     try {
       av.setListener({
@@ -149,11 +153,17 @@ class PlayerManager {
           callbacks.onPlaying()
         },
         onstreamcompleted: () => { 
-          if (this.state === 'PLAYING') {
-            try { av.seekTo(0); av.play() } catch (_) {} 
-          }
+          // Preview terminou — para naturalmente (sem loop)
+          // Loop infinito causa crash no decoder da TV
+          this.state = 'IDLE'
+          isAVPlayBusy = false
         },
         oncurrentplaytime: (time: number) => {
+          // Limita callbacks: só processa a cada 1 segundo
+          // (dispara 60x/seg = sobrecarga de CPU)
+          if (time - lastTimeUpdate < 1000) return
+          lastTimeUpdate = time
+          
           if (time > 100 && !isFirstFrameFired && this.state === 'PLAYING') {
             isFirstFrameFired = true
             callbacks.onFirstFrameRendered()
@@ -199,6 +209,7 @@ class PlayerManager {
           try {
             av.play()
             this.state = 'PLAYING'
+            isAVPlayBusy = false // hardware está reproduzindo; libera flag de open para não bloquear expand
             setTimeout(() => {
               if (this.state === 'PLAYING' && !isFirstFrameFired) {
                 isFirstFrameFired = true
@@ -232,7 +243,7 @@ class PlayerManager {
   public expandToFullscreen(): void {
     const av = this.getAV()
     if (!av || (this.state !== 'READY' && this.state !== 'PLAYING')) return
-    if (isAVPlayBusy) return
+    // Removido check isAVPlayBusy — se state é READY/PLAYING, pode expandir
 
     this.savedRect = this.lastPlayRect ? { ...this.lastPlayRect } : null
     try { av.setVolume(100) } catch (_) {}
@@ -276,10 +287,24 @@ class PlayerManager {
     }
     this.currentUrl = null
     const av = this.getAV()
+    
     if (av) {
-      // Fire and forget - Libera Imediatamente!
+      // Fire and forget - Libera Imediatamente o hardware!
       safeRelease(av)
       this.state = 'IDLE'
+      
+      // 1. Manda a camada de hardware do Tizen pro limbo absoluto
+      try {
+        av.setDisplayRect(-1000, -1000, 1, 1)
+      } catch (_) {}
+    }
+
+    // 2. Tira o buraco negro da frente do React IMEDIATAMENTE
+    if (this.avObject) {
+      this.avObject.style.left = '-1000px'
+      this.avObject.style.top = '-1000px'
+      this.avObject.style.width = '1px'
+      this.avObject.style.height = '1px'
     }
   }
 }

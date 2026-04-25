@@ -81,24 +81,24 @@ export default function AutoplayCard({
         transform: 'none',
       }}
     >
-      {/* Fundo: preto por padrão. Só transparent na TV com AVPlay tocando (hole punch).
-          Localmente (sem AVPlay) mantém preto para não expor o fundo do browser. */}
-      <div style={{
-        position: 'absolute', left: 0, top: 0,
-        width: '100%', height: '100%',
-        backgroundColor: (thumbnailOpacity < 1 && typeof (window as any).webapis?.avplay !== 'undefined') ? 'transparent' : '#000',
-        transition: 'background-color 300ms ease',
-        zIndex: 0,
+      {/* Fundo: preto por padrão. Transparent quando AVPlay toca (hole-punch).
+          REGRA: Se thumbnailOpacity < 1 E AVPlay existe → transparent.
+          Sem AVPlay (desktop) → preto para não expor fundo do browser. */}
+      <div 
+        id="autoplay-punch-hole"
+        style={{
+          position: 'absolute', left: 0, top: 0,
+          width: '100%', height: '100%',
+          backgroundColor: thumbnailOpacity < 1 ? 'transparent' : '#000',
+          transition: 'none',
+          zIndex: 0,
+          pointerEvents: 'none',
       }} />
 
-      {/* Camada 1: O AVPlay <object> vive permanentemente no document.body.
-          O PlayerManager usa setDisplayRect() para posicionar o vídeo aqui via hardware.
-          Não há elemento DOM aqui — o chip de vídeo renderiza diretamente atrás desta div. */}
+      {/* Camada 1: O AVPlay <object> */}
 
-      {/* Camada 2: Poster/Backdrop — sempre visível durante loading, fade-out ao tocar.
-          NUNCA some antes do vídeo aparecer — thumbnailOpacity só vai a 0 no onPlaying. */}
       <img
-        key={channel.id}
+        id="autoplay-punch-img"
         src={backdropSrc || undefined}
         style={{
           position: 'absolute', left: 0, top: 0,
@@ -108,17 +108,20 @@ export default function AutoplayCard({
           display: 'block',
           opacity: thumbnailOpacity,
           visibility: thumbnailOpacity === 0 ? 'hidden' : 'visible',
-          // Fade-out suave ao carregar vídeo (1→0). Reset instantâneo ao trocar card (0→1).
-          transition: thumbnailOpacity < 1 ? 'opacity 200ms ease-out' : 'none',
+          // Transição SEMPRE instantânea - o fade suave é feito via delay no setState
+          transition: 'none',
         }}
         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
       />
 
-      {/* Camada 3: Gradiente */}
+      {/* Camada 3: Gradiente — some quando vídeo está tocando para não tampar hole-punch */}
       <div style={{
         position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%',
         background: 'linear-gradient(transparent, rgba(0,0,0,0.92))',
-        zIndex: 2, // UI acima do poster
+        zIndex: 2,
+        opacity: thumbnailOpacity,
+        transition: 'none',
+        pointerEvents: 'none',
       }} />
 
       {/* Camada 4: Title / Logo / Badge (repassados pelo HomeScreen) */}

@@ -63,7 +63,10 @@ RawChannel (M3U)
 - Batch de requisições de Metadata (TMDB) e suspensão visual caso metadata não venha.
 - Componentes da lista renderizam baseados em Threshold / Lazy.
 
-## Player Layer (AvPlay/Shaka) - *Em Construção*
-- Padrão híbrido devido as limitações DRM HLS do Shaka e a lentidão do AVPlay.
-- Máquina de estados: `idle` → `loading` → `buffering` → `playing`
-- Controle via D-Pad do Tizen amarrado a refs de React (`useRef`) para zero-delay event loops.
+## Player Layer (AvPlay/Shaka) - Implementado
+- **PlayerManager (Singleton):** Gerencia uma única instância global de AVPlay fora do React, garantindo que o hardware nunca entre em `INVALID_STATE`.
+- **Hole-Punch Layer:** O vídeo nativo renderiza atrás do HTML transparente, com `setDisplayRect` sincronizado milimetricamente aos cartões da UI.
+- **Seamless Expand:** Sistema de expansão instantânea (Card → Fullscreen) sem interromper o stream de vídeo, preservando o buffer e a experiência.
+- **Double-Buffer Preview:** Uso de instâncias alternadas (`av-hero-player-a/b`) para transições suaves no carrossel principal.
+- **Máquina de estados:** `IDLE` → `OPENING` → `PREPARING` → `READY` → `PLAYING`
+- **D-pad Integration:** Event-loop do controle remoto ligado diretamente ao PlayerManager para latência zero.
