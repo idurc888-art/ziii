@@ -10,13 +10,21 @@ App IPTV para Samsung Tizen 4.0+ (TV UN50RU7100GXZD) que carrega playlists M3U, 
 - Shaka Player (HLS/DASH) + AVPlay (fallback .ts)
 - Zustand + Web Worker (fallback thread principal)
 
-## Status Atual (25/04/2026 15:35)
-✅ **HARDWARE VIDEO PREVIEW & PLAYER MANAGER IMPLEMENTADOS**
-- Implementado `PlayerManager` (Singleton AVPlay) para gestão de hardware estável.
-- `HomeScreen` otimizada com layout Telvix e sliding window de 5 elementos.
-- Seamless Expand (Card → Fullscreen) funcional sem quebra de buffer.
-- Build & Deploy automatizado via `scripts/deploy/deploy.sh`.
-- TV IP: `10.0.0.100:26101` | App ID: `2TDndgJZyN.ziiiTV`
+## Status Atual (25/04/2026 19:15)
+✅ **TELA DE TV AO VIVO ORGANIZADA POR CATEGORIAS**
+- Fileira "🔴 Jogos Ao Vivo Agora" detecta automaticamente canais com eventos (keywords: ao vivo, live, vs, jogo, partida)
+- Fileiras separadas: Premiere, SporTV, ESPN, Combate/Lutas, Todos Esportes
+- Hero banner prioriza jogos ao vivo + Premiere + SporTV
+- Mesma arquitetura da Home (rows + AutoplayCard + preview de vídeo)
+- Build & Deploy: 16.8s build + 4.1s install = **20.9s total**
+
+✅ **PREVIEW DE VÍDEO ESTÁVEL + TRANSIÇÕES PERFEITAS** (fase anterior)
+- `PlayerManager` com loop infinito corrigido (preview para naturalmente)
+- `oncurrentplaytime` limitado a 1x/segundo (zero sobrecarga de CPU)
+- Troca de card instantânea (thumb aparece imediatamente)
+- Fade suave thumb→vídeo (200ms) via delay no `setState`
+- Expand para fullscreen funcional (sem bloqueio `isAVPlayBusy`)
+- Documentação técnica completa em `/docs/tecnologias/`
 
 ## Como Fazer Deploy
 ```bash

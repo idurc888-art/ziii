@@ -6,14 +6,12 @@ import PlayerScreen from './screens/PlayerScreen/PlayerScreen'
 import SplashScreen from './screens/SplashScreen/SplashScreen'
 import ProfileScreen from './screens/ProfileScreen/ProfileScreen'
 import HomeScreen from './screens/HomeScreen/HomeScreen'
-import DetailScreen from './screens/DetailScreen/DetailScreen'
 import TransitionOverlay from './components/TransitionOverlay'
 import FullscreenOverlay from './components/FullscreenOverlay'
 import { keyboardMaestro } from './services/keyboardManager'
 import { expandManager } from './services/expandManager'
 import { AuthService } from './services/authService'
 import { Logger } from './services/LoggerService'
-import type { Channel } from './types/channel'
 
 const TEST_M3U_URL = 'http://cdc55.cc/get.php?username=0357028521&password=82740&type=m3u_plus&output=ts'
 
@@ -31,18 +29,15 @@ export default function App() {
   const [appScreen, setAppScreen] = useState<AppScreen>('splash')
   const [showDebug, setShowDebug] = useState(true) // Ativo por padrão para debugar na TV
 
-  // DetailScreen UI interceptor
-  const [detailChannel, setDetailChannel] = useState<Channel | null>(null)
-
   useEffect(() => {
     keyboardMaestro.init()
     return () => keyboardMaestro.destroy()
   }, [])
 
   useEffect(() => {
-    const view = currentChannel ? 'player' : detailChannel ? 'details' : appScreen === 'profiles' ? 'profiles' : 'main'
+    const view = currentChannel ? 'player' : appScreen === 'profiles' ? 'profiles' : 'main'
     keyboardMaestro.setActiveView(view)
-  }, [appScreen, currentChannel, detailChannel])
+  }, [appScreen, currentChannel])
 
   // ─── Teclas Globais e BACK Handling ────────────────────────────────────────
   useEffect(() => {
@@ -129,97 +124,65 @@ export default function App() {
   }, [appScreen])
 
 
-  // ─── Roteamento: PlayerScreen ──────────────────────────────────────────────
-  if (currentChannel) {
-    return (
-      <>
-        <TransitionOverlay />
-        {showDebug && <DebugOverlay />}
-        <PlayerScreen
-          channel={currentChannel}
-          onShakaReady={(player) => { shakaRef.current = player }}
-          onBack={() => {
-            if (expandManager.isSeamlessActive() && expandManager.getChannel()?.id === currentChannel.id) {
-               // Collapse back to card smoothly instead of destroying player
-               expandManager.triggerCollapse()
-               setCurrentChannel(null)
-               return
-            }
-
-            if (shakaRef.current) {
-              try { shakaRef.current.destroy() } catch(_) {}
-            }
-            try {
-              const av = (window as any).webapis?.avplay
-              if (av) av.stop()
-            } catch(_) {}
-            shakaRef.current = null
-            setCurrentChannel(null)
-            document.body.focus()
-          }}
-        />
-      </>
-    )
-  }
-
-  // ─── Roteamento: DetailScreen (Desmonta Home) ──────────────────────────────
-  if (detailChannel) {
-    return (
-      <>
-        <TransitionOverlay />
-        {showDebug && <DebugOverlay />}
-        <DetailScreen
-          channel={detailChannel}
-          onPlay={(ch) => {
-            setDetailChannel(null)
-            setCurrentChannel(ch)
-          }}
-          onBack={() => {
-            setDetailChannel(null)
-            document.body.focus()
-          }}
-        />
-      </>
-    )
-  }
-
-  // ─── Roteamento: Splash ───────────────────────────────────────────────────
-  if (appScreen === 'splash') {
-    return (
-      <>
-        {showDebug && <DebugOverlay />}
-        <SplashScreen onDone={() => setAppScreen('profiles')} />
-      </>
-    )
-  }
-
-  // ─── Roteamento: Profiles ─────────────────────────────────────────────────
-  if (appScreen === 'profiles') {
-    return (
-      <>
-        <TransitionOverlay />
-        {showDebug && <DebugOverlay />}
-        <ProfileScreen onSelect={() => setAppScreen('home')} />
-      </>
-    )
-  }
-
-  // ─── Roteamento: Home ─────────────────────────────────────────────────────
+  // ─── Roteamento: App Container Rígido (1920x1080) ─────────────────────────
   return (
-    <>
-      <FullscreenOverlay onEnterPlayerMode={(ch) => setCurrentChannel(ch)} />
-      <TransitionOverlay />
-      {showDebug && <DebugOverlay />}
-      <HomeScreen
-        groups={normalizedGroups}
-        onPlay={(ch) => setDetailChannel(ch)}
-        onBack={() => {
-          const tizen = (window as any).tizen
-          if (tizen?.application) {
-            tizen.application.getCurrentApplication().exit()
-          }
-        }}
-      />
-    </>
+    <div className="app-root" style={{ position: 'relative', width: 1920, height: 1080, overflow: 'hidden' }}>
+      
+      {currentChannel ? (
+        <>
+          <TransitionOverlay />
+          {showDebug && <DebugOverlay />}
+          <PlayerScreen
+            channel={currentChannel}
+            onShakaReady={(player) => { shakaRef.current = player }}
+            onBack={() => {
+              if (expandManager.isSeamlessActive() && expandManager.getChannel()?.id === currentChannel.id) {
+                 expandManager.triggerCollapse()
+                 setCurrentChannel(null)
+                 return
+              }
+              if (shakaRef.current) {
+                try { shakaRef.current.destroy() } catch(_) {}
+              }
+              try {
+                const av = (window as any).webapis?.avplay
+                if (av) av.stop()
+              } catch(_) {}
+              shakaRef.current = null
+              setCurrentChannel(null)
+              document.body.focus()
+            }}
+          />
+        </>
+      ) : appScreen === 'splash' ? (
+        <>
+          {showDebug && <DebugOverlay />}
+          <SplashScreen onDone={() => setAppScreen('profiles')} />
+        </>
+      ) : appScreen === 'profiles' ? (
+        <>
+          <TransitionOverlay />
+          {showDebug && <DebugOverlay />}
+          <ProfileScreen onSelect={() => setAppScreen('home')} />
+        </>
+      ) : (
+        <>
+          <FullscreenOverlay onEnterPlayerMode={(ch) => setCurrentChannel(ch)} />
+          <TransitionOverlay />
+          {showDebug && <DebugOverlay />}
+          <HomeScreen
+            groups={normalizedGroups}
+            onPlay={(ch) => setCurrentChannel(ch)}
+            onBack={() => {
+              const tizen = (window as any).tizen
+              if (tizen?.application) {
+                tizen.application.getCurrentApplication().exit()
+              }
+            }}
+          />
+        </>
+      )}
+
+    </div>
   )
 }

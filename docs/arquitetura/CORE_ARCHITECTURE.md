@@ -63,10 +63,41 @@ RawChannel (M3U)
 - Batch de requisições de Metadata (TMDB) e suspensão visual caso metadata não venha.
 - Componentes da lista renderizam baseados em Threshold / Lazy.
 
-## Player Layer (AvPlay/Shaka) - Implementado
-- **PlayerManager (Singleton):** Gerencia uma única instância global de AVPlay fora do React, garantindo que o hardware nunca entre em `INVALID_STATE`.
-- **Hole-Punch Layer:** O vídeo nativo renderiza atrás do HTML transparente, com `setDisplayRect` sincronizado milimetricamente aos cartões da UI.
-- **Seamless Expand:** Sistema de expansão instantânea (Card → Fullscreen) sem interromper o stream de vídeo, preservando o buffer e a experiência.
-- **Double-Buffer Preview:** Uso de instâncias alternadas (`av-hero-player-a/b`) para transições suaves no carrossel principal.
-- **Máquina de estados:** `IDLE` → `OPENING` → `PREPARING` → `READY` → `PLAYING`
-- **D-pad Integration:** Event-loop do controle remoto ligado diretamente ao PlayerManager para latência zero.
+## Player Layer (AVPlay) - ✅ ESTÁVEL
+
+### PlayerManager (Singleton)
+- **Instância global única** de AVPlay fora do ciclo React
+- **Debounce 1.5s** antes de iniciar preview (evita sobrecarga)
+- **`isAVPlayBusy` flag** para prevenir PLAYER_ERROR_INVALID_STATE
+- **Loop infinito corrigido:** preview para naturalmente ao terminar (sem `seekTo(0)`)
+- **`oncurrentplaytime` limitado:** 1x/segundo (não 60x/seg) para evitar sobrecarga de CPU
+- **Expand/collapse fullscreen** sem bloqueio (remove check `isAVPlayBusy`)
+
+### Hooks
+- **`useCardAutoplay`:** conecta card focado ao PlayerManager, reseta thumb instantaneamente ao trocar
+- **`useStreamPreview`:** double-buffer AVPlay para HeroCarousel (player-a/player-b)
+- **`useSeamlessExpand`:** expansão seamless card→fullscreen sem interromper stream
+
+### Transições Perfeitas
+- **Troca de card:** thumb aparece instantaneamente (`transition: 'none'`)
+- **Preview inicia:** fade suave thumb→vídeo (200ms via delay no `setState`)
+- **Sem flash preto:** thumb sempre visível até vídeo estar pronto
+- **Sem tela preta entre cards:** `setState(IDLE)` imediato ao trocar
+
+### Hole-Punch Layer
+- Vídeo nativo renderiza **atrás** do HTML transparente
+- `setDisplayRect()` sincronizado com posição do card na tela
+- Fundo `transparent` quando vídeo toca, `#000` quando idle
+
+### Controle D-Pad
+- Navegação via `keyboardManager` (Vanilla JS, zero lag)
+- Enter durante preview: expande para fullscreen
+- Back durante fullscreen: colapsa para card
+- Setas durante preview: cancela e troca de card instantaneamente
+
+### Máquina de Estados
+```
+IDLE → OPENING → PREPARING → READY → PLAYING
+                                  ↓
+                              (termina naturalmente)
+```

@@ -66,6 +66,12 @@ function buildRows(rowsData: Partial<ContentRow>[]): ContentRow[] {
     }))
 }
 
+// ─── Detecta canais com jogos ao vivo (keywords no nome) ───
+function detectLiveGames(channels: Channel[]): Channel[] {
+  const liveKeywords = /\b(ao vivo|live|vs|x\s|jogo|partida|match|hoje)\b/i
+  return channels.filter(ch => liveKeywords.test(ch.name))
+}
+
 // ─── Preenche tmdb das rows COM dados já cacheados (sem chamar API) ───
 function fillTmdbFromCache(rows: ContentRow[]): void {
   for (const row of rows) {
@@ -398,22 +404,27 @@ export async function buildTvContent(_groups: NormalizedGroups): Promise<ScreenC
   const t0 = performance.now()
   ContentCatalog.resetUsed()
 
+  const allSports = ContentCatalog.getPool('esportes')
+  
+  // Detecta jogos ao vivo automaticamente
+  const jogosAoVivo = detectLiveGames(allSports).slice(0, 20)
+  
   const sportv   = ContentCatalog.searchPool('esportes', /sportv/i, 20)
   const espn     = ContentCatalog.searchPool('esportes', /espn/i, 20)
   const premiere = ContentCatalog.searchPool('esportes', /premiere|pfc/i, 20)
   const lutas    = ContentCatalog.searchPool('esportes', /combate|ufc|boxe/i, 20)
-  const jogos    = ContentCatalog.searchPool('esportes', /libertadores|brasileir|champions|sulamericana| x | vs /i, 20)
-  const outros   = ContentCatalog.getPool('esportes').slice(0, 30)
+  const outros   = allSports.slice(0, 30)
 
   const rows = buildRows([
-    { type: 'wide',    title: '⚽ Jogos & ',   titleAccent: 'Campeonatos',  channels: jogos },
-    { type: 'portrait', title: '🏆 ESPN & ',   titleAccent: 'SporTV',       channels: [...espn, ...sportv] },
-    { type: 'portrait', title: '🏟️ Rede ',     titleAccent: 'Premiere',     channels: premiere },
-    { type: 'portrait', title: '🥊 Combate & ', titleAccent: 'Lutas',       channels: lutas },
-    { type: 'simple',   title: '⚽ Todos os ', titleAccent: 'Esportes',     channels: outros },
+    { type: 'wide',     title: '🔴 Jogos ',    titleAccent: 'Ao Vivo Agora', channels: jogosAoVivo },
+    { type: 'portrait', title: '🏟️ Rede ',     titleAccent: 'Premiere',      channels: premiere },
+    { type: 'portrait', title: '📺 ',          titleAccent: 'SporTV',        channels: sportv },
+    { type: 'portrait', title: '🏆 ',          titleAccent: 'ESPN',          channels: espn },
+    { type: 'portrait', title: '🥊 Combate & ', titleAccent: 'Lutas',        channels: lutas },
+    { type: 'simple',   title: '⚽ Todos os ', titleAccent: 'Esportes',      channels: outros },
   ])
 
-  const heroChannels = [...sportv.slice(0, 2), ...espn.slice(0, 2), ...premiere.slice(0, 1)]
+  const heroChannels = [...jogosAoVivo.slice(0, 2), ...premiere.slice(0, 2), ...sportv.slice(0, 1)]
   const heroTmdb = buildHeroTmdb(heroChannels)
   fillTmdbFromCache(rows)
 

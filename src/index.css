@@ -11,14 +11,18 @@
 }
 
 #root {
-  width: 100vw;
-  height: 100vh;
-  margin: 0 auto;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
+  width: 1920px;
+  height: 1080px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  text-align: left;
+  display: block;
   box-sizing: border-box;
   overflow: hidden;
+  background-color: transparent !important;
 }
 
 html, body {

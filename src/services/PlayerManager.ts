@@ -287,12 +287,12 @@ class PlayerManager {
     }
     this.currentUrl = null
     const av = this.getAV()
-    
-    if (av) {
+
+    if (av && this.state !== 'IDLE') {
       // Fire and forget - Libera Imediatamente o hardware!
       safeRelease(av)
       this.state = 'IDLE'
-      
+
       // 1. Manda a camada de hardware do Tizen pro limbo absoluto
       try {
         av.setDisplayRect(-1000, -1000, 1, 1)

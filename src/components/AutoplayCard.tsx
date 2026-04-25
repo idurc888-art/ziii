@@ -87,12 +87,13 @@ export default function AutoplayCard({
       <div 
         id="autoplay-punch-hole"
         style={{
-          position: 'absolute', left: 0, top: 0,
-          width: '100%', height: '100%',
+          position: 'absolute', left: 8, top: 8,
+          width: 'calc(100% - 16px)', height: 'calc(100% - 16px)',
           backgroundColor: thumbnailOpacity < 1 ? 'transparent' : '#000',
           transition: 'none',
           zIndex: 0,
           pointerEvents: 'none',
+          borderRadius: borderRadius, // manter cantos arredondados caso vaze
       }} />
 
       {/* Camada 1: O AVPlay <object> */}
@@ -101,8 +102,8 @@ export default function AutoplayCard({
         id="autoplay-punch-img"
         src={backdropSrc || undefined}
         style={{
-          position: 'absolute', left: 0, top: 0,
-          width: '100%', height: '100%',
+          position: 'absolute', left: 8, top: 8,
+          width: 'calc(100% - 16px)', height: 'calc(100% - 16px)',
           objectFit: 'cover',
           zIndex: 1,
           display: 'block',
@@ -116,7 +117,8 @@ export default function AutoplayCard({
 
       {/* Camada 3: Gradiente — some quando vídeo está tocando para não tampar hole-punch */}
       <div style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%',
+        position: 'absolute', bottom: 8, left: 8, 
+        width: 'calc(100% - 16px)', height: '50%',
         background: 'linear-gradient(transparent, rgba(0,0,0,0.92))',
         zIndex: 2,
         opacity: thumbnailOpacity,
