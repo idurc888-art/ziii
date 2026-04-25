@@ -1,0 +1,128 @@
+import React, { useRef } from 'react'
+import { useCardAutoplay } from '../hooks/useCardAutoplay'
+import { useSeamlessExpand } from '../hooks/useSeamlessExpand'
+import type { Channel } from '../types/channel'
+import { playerManager } from '../services/PlayerManager'
+
+interface Props {
+  channel: Channel
+  isFocused: boolean
+  onClick?: () => void
+  width: number
+  height: number
+  left: number
+  top: number
+  zIndex: number
+  borderRadius: number
+  focusBorder: string
+  backdropSrc: string | null
+  children?: React.ReactNode
+}
+
+const FOCUS_DURATION = 300
+const FOCUS_EASING = 'cubic-bezier(0.4, 0, 0.2, 1)'
+
+export default function AutoplayCard({
+  channel, isFocused, onClick,
+  width, height, left, top, zIndex,
+  borderRadius, focusBorder, backdropSrc, children
+}: Props) {
+
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  const { thumbnailOpacity } = useCardAutoplay({
+    cardId: channel.id,
+    streams: channel.streams || [],
+    focused: isFocused,
+    cardRef,
+  })
+
+  // Para o SeamlessExpand, usamos o ID global injetado pelo PlayerManager
+  const { expand } = useSeamlessExpand({ 
+    cardId: channel.id, 
+    objectId: playerManager.getGlobalObjectId() 
+  })
+
+  // NOTA: O listener de Enter foi REMOVIDO daqui.
+  // O controle do D-pad é 100% centralizado via keyboardMaestro (Vanilla JS puro).
+  // Zero listeners React duplicados = Zero Input Lag.
+
+  // Expõe handleAction via ref para que o HomeScreen possa invocar a expansão
+  const handleAction = () => {
+    if (onClick) onClick()
+    if (cardRef.current && isFocused) {
+      expand(channel, cardRef.current)
+    }
+  }
+
+  return (
+    <div
+      ref={cardRef}
+      onClick={handleAction}
+      style={{
+        position: 'absolute',
+        left, top,
+        width, height, zIndex,
+        borderRadius,
+        cursor: 'pointer',
+        // Tizen Hardware: quando focado e tocando, NAO usar overflow:hidden!
+        // O AVPlay renderiza como layer de hardware ATRAS do HTML.
+        // overflow:hidden cortaria o hole punch e o video ficaria invisivel.
+        overflow: isFocused && thumbnailOpacity < 1 ? 'visible' : 'hidden',
+        // Borda sempre via outline (não afetada por overflow:hidden)
+        outline: isFocused ? focusBorder : '2px solid transparent',
+        outlineOffset: '0px',
+        border: 'none',
+        opacity: isFocused ? 1 : 0,
+        pointerEvents: isFocused ? 'auto' : 'none',
+        transition: `opacity ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
+        // boxShadow inset mantém o efeito visual interno
+        boxShadow: isFocused ? 'inset 0 0 0 3px rgba(0,0,0,0.9)' : 'none',
+        transform: 'none',
+      }}
+    >
+      {/* Fundo: preto por padrão. Só transparent na TV com AVPlay tocando (hole punch).
+          Localmente (sem AVPlay) mantém preto para não expor o fundo do browser. */}
+      <div style={{
+        position: 'absolute', left: 0, top: 0,
+        width: '100%', height: '100%',
+        backgroundColor: (thumbnailOpacity < 1 && typeof (window as any).webapis?.avplay !== 'undefined') ? 'transparent' : '#000',
+        transition: 'background-color 300ms ease',
+        zIndex: 0,
+      }} />
+
+      {/* Camada 1: O AVPlay <object> vive permanentemente no document.body.
+          O PlayerManager usa setDisplayRect() para posicionar o vídeo aqui via hardware.
+          Não há elemento DOM aqui — o chip de vídeo renderiza diretamente atrás desta div. */}
+
+      {/* Camada 2: Poster/Backdrop — sempre visível durante loading, fade-out ao tocar.
+          NUNCA some antes do vídeo aparecer — thumbnailOpacity só vai a 0 no onPlaying. */}
+      <img
+        key={channel.id}
+        src={backdropSrc || undefined}
+        style={{
+          position: 'absolute', left: 0, top: 0,
+          width: '100%', height: '100%',
+          objectFit: 'cover',
+          zIndex: 1,
+          display: 'block',
+          opacity: thumbnailOpacity,
+          visibility: thumbnailOpacity === 0 ? 'hidden' : 'visible',
+          // Fade-out suave ao carregar vídeo (1→0). Reset instantâneo ao trocar card (0→1).
+          transition: thumbnailOpacity < 1 ? 'opacity 200ms ease-out' : 'none',
+        }}
+        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+      />
+
+      {/* Camada 3: Gradiente */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%',
+        background: 'linear-gradient(transparent, rgba(0,0,0,0.92))',
+        zIndex: 2, // UI acima do poster
+      }} />
+
+      {/* Camada 4: Title / Logo / Badge (repassados pelo HomeScreen) */}
+      {children}
+    </div>
+  )
+}

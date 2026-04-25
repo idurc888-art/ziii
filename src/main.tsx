@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client'
+import './services/remoteConsole'
 import App from './App.tsx'
 
 // ★ Samsung Tizen: adaptToScreen deve ser chamado antes do primeiro render

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useChannelsStore } from '../../store/channelsStore'
+import { keyboardMaestro } from '../../services/keyboardManager'
 
 const USERS = [
   { id: 1, name: 'Zikualdo',  icon: '👽', color: '#ff006e' },
@@ -48,8 +49,8 @@ export default function ProfileScreen({ onSelect }: Props) {
         handleSelect(focusedRef.current)
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    keyboardMaestro.subscribe('profiles:main', onKey)
+    return () => keyboardMaestro.unsubscribe('profiles:main')
   }, [])
 
   return (
@@ -62,7 +63,7 @@ export default function ProfileScreen({ onSelect }: Props) {
     }}>
       {/* Imagem alien à direita */}
       <img
-        src="hero-alien.png"
+        src="hero-alien-opt.jpg"
         alt=""
         style={{
           position: 'absolute', inset: 0,

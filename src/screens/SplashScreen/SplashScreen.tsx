@@ -34,6 +34,20 @@ export default function SplashScreen({ onDone }: Props) {
   const startTime = useRef(Date.now())
   const hasTriggeredExit = useRef(false)
 
+  // ★ Timeout máximo de segurança — nunca fica preso para sempre na TV
+  useEffect(() => {
+    const MAX_WAIT = 90000 // 90s máximo
+    const t = setTimeout(() => {
+      if (!hasTriggeredExit.current) {
+        console.warn('[Splash] Timeout máximo atingido — forçando saída')
+        hasTriggeredExit.current = true
+        setPhase('out')
+        setTimeout(() => onDoneRef.current(), 600)
+      }
+    }, MAX_WAIT)
+    return () => clearTimeout(t)
+  }, [])
+
   // Fase visual de entrada
   useEffect(() => {
     const t1 = setTimeout(() => setPhase('hold'), 300)
@@ -94,7 +108,7 @@ export default function SplashScreen({ onDone }: Props) {
         }} />
       ) : (
         <img
-          src="hero-alien.png"
+          src="hero-alien-opt.jpg"
           alt=""
           onError={() => setImgFailed(true)}
           style={{

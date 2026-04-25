@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { keyboardMaestro } from '../../services/keyboardManager';
 import './TopMoviesBanner.css';
 import type { TMDBResult } from '../../services/tmdbService';
 
@@ -91,8 +92,8 @@ export function TopMoviesBanner({
       }
     };
     
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    keyboardMaestro.subscribe('main:topmovies', handleKeyDown);
+    return () => keyboardMaestro.unsubscribe('main:topmovies');
   }, [currentIndex, movies, goToSlide, onSelect, onAddToList]);
   
   // Auto-play inicial

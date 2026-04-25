@@ -22,8 +22,9 @@ self.onmessage = async (e: MessageEvent<{ url: string }>) => {
     const text = await res.text()
     const playlist = parseM3U(text)
     
-    // Converte para RawChannel[] e normaliza (deduplicação)
-    const rawChannels: RawChannel[] = playlist.channels.map(item => ({
+    // DEV_LIMIT: limita canais para testes (evita travar no Tizen com listas de 200k)
+    const DEV_LIMIT = 3000
+    const rawChannels: RawChannel[] = playlist.channels.slice(0, DEV_LIMIT).map(item => ({
       name: item.name ?? '',
       url: item.url ?? '',
       logo: item.tvgLogo ?? '',

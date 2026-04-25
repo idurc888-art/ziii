@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Channel } from '../../types/channel';
 import { useStreamPreview } from '../../hooks/useStreamPreview';
+import { keyboardMaestro } from '../../services/keyboardManager';
 import './HeroBanner.css';
 
 export interface HeroSlide {
@@ -57,23 +58,23 @@ export function HeroBanner({
   const currentSlideValid = slides[currentIndex];
   // Usa o channel do slide se não houver override
   const activeChannel = previewOverrideChannel || currentSlideValid?.channel || null;
-  // Hero autoplay: DESABILITADO temporariamente para evitar piscada
-  const heroAutoplayActive = false;
+  // Hero autoplay: Habilitado conforme pedido (não tirar o auto preview)
+  const heroAutoplayActive = true;
 
 
 
   const { videoStyle, backdropStyle, activePlayerId } = useStreamPreview(
-    null, // activeChannel desabilitado
-    null, // nextSlideValid?.channel || null desabilitado
-    false, // preview desabilitado
+    activeChannel, 
+    null, 
+    focused, // só habilita o preview de hardware se o HeroBanner for o elemento com foco!
     {
       idleDelay: 800,
       fadeDuration: 350,
-      ...(heroAutoplayActive && activeChannel ? {
-        seekToMs: heroAutoplay!.getSeekOffset(activeChannel),
-        previewDuration: heroAutoplay!.previewDuration,
+      ...(heroAutoplayActive && activeChannel && heroAutoplay ? {
+        seekToMs: heroAutoplay.getSeekOffset(activeChannel),
+        previewDuration: heroAutoplay.previewDuration,
         onStopped: (offsetMs: number) => {
-          if (activeChannel) heroAutoplay!.onStopped(activeChannel, offsetMs)
+          if (activeChannel && heroAutoplay.onStopped) heroAutoplay.onStopped(activeChannel, offsetMs)
         },
       } : {
         previewDuration: 18000,
@@ -187,8 +188,8 @@ export function HeroBanner({
           break;
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    keyboardMaestro.subscribe('main:hero', handleKeyDown);
+    return () => keyboardMaestro.unsubscribe('main:hero');
   }, [currentIndex, slides, goToSlide, onSelect, onAddToList, focused]);
 
   // Resize

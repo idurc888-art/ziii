@@ -1,15 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import type { UICategory } from '../../services/categoryMapper'
 import type { ContentRow, ScreenContent } from '../../services/contentSelector'
 import type { TMDBResult } from '../../services/tmdbService'
 import { enrichChannel } from '../../services/tmdbService'
+import { expandManager } from '../../services/expandManager'
+import { playerManager } from '../../services/PlayerManager'
+import { Logger } from '../../services/LoggerService'
+import { loadingObserver } from '../../services/loadingObserver'
+import { debugStore } from '../../components/DebugOverlay'
+import AutoplayCard from '../../components/AutoplayCard'
 import {
   buildHomeContent,
   buildFilmesContent,
   buildSeriesContent,
   buildTvContent
 } from '../../services/contentSelector'
-import { recordPlay, getHeroOffset, saveHeroOffset } from '../../services/historyService'
+import { recordPlay } from '../../services/historyService'
 import { HeroBanner, mockHeroSlides, type HeroSlide } from '../../components/HeroBanner'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -28,9 +34,7 @@ type HeroState = 'default' | 'focused' | 'collapsed' | 'locked'
 type DashboardView = 'home' | 'movies' | 'series' | 'live'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const ACCENT = '#ff006e'
-const GLOW   = 'rgba(255, 0, 110, 0.4)'
-const BG     = '#000000'
+// ACCENT e GLOW são dinâmicos dentro do componente (verde=live, rosa=default)
 const TEXT_MUTED = '#a0a0a0'
 
 
@@ -83,22 +87,20 @@ const CATEGORY_ICONS: Record<string, { emoji: string; color: string }> = {
   'Infantil':    { emoji: '🧸', color: '#f472b6' },
 }
 
-const FOCUS_SCALE    = 1.05
-const FOCUS_DURATION = 250
-const FOCUS_EASING   = 'cubic-bezier(0.25, 1, 0.5, 1)'
-const UNFOCUS_OPACITY = 1
-const FOCUS_GLOW = '0 0 20px rgba(255,0,110,0.5), 0 0 40px rgba(255,0,110,0.2), 0 0 60px rgba(255,0,110,0.1), inset 0 0 0 3px #000'
-const FOCUS_BORDER = `3px solid #ff006e`
+const FOCUS_SCALE    = 1.08
+const FOCUS_DURATION = 0 // DIRETO E RETO (0ms), também conserta o bug do getBoundingClientRect no AVPlay
+const FOCUS_EASING   = 'linear'
+const UNFOCUS_OPACITY = 0.85
+// ACCENT e FOCUS_BORDER são dinâmicos agora (ver dentro do componente)
 
-// ─── Pre-computed constants (avoid IIFE in render) ───
-const CARD_FONTS = [
-  'Inter, sans-serif',
-  'Outfit, sans-serif',
-  'Barlow Condensed, sans-serif',
-  'Georgia, serif',
-  'Courier New, monospace',
-]
-const VIDEO_PREVIEW_DELAY = 1500 // ms — Netflix-style: espera 1.5s parado antes de tocar
+// Constrói URL de imagem TMDB. Aceita paths relativos (/abc.jpg) ou URLs completas
+// (catalog.ts armazena URLs completas com tamanho já embutido)
+function tmdbImg(path: string | undefined | null, size = 'w342'): string | null {
+  if (!path) return null
+  if (path.startsWith('http')) return path
+  if (path.startsWith('/')) return `https://image.tmdb.org/t/p/${size}${path}`
+  return null
+}
 
 // ─── State Persistence ──────────────────────────────────────────────────────
 const STATE_KEY = 'ziiiTV_homeState'
@@ -106,8 +108,83 @@ function saveNavState(data: { focusZone: string; contentRow: number; contentCols
   try { localStorage.setItem(STATE_KEY, JSON.stringify(data)) } catch (_) {}
 }
 function loadNavState(): { focusZone?: string; contentRow?: number; contentCols?: number[]; activeView?: string } | null {
-  try { const raw = localStorage.getItem(STATE_KEY); return raw ? JSON.parse(raw) : null } catch (_) { return null }
+  try { return JSON.parse(localStorage.getItem(STATE_KEY) || 'null') } catch (_) { return null }
 }
+
+// ─── Netflix Architecture: React.memo + Component Pooling + Surface Cache Shielding ───
+const MemoizedSideCard = React.memo<{
+  ci: number; ch: Channel; offset: number;
+  translateX: number; topOffset: number;
+  width: number; height: number;
+  borderRadius: number; border: string;
+  isFocused: boolean; isUnderCenter: boolean;
+  posterSrc: string; onPlay: (ch: Channel) => void;
+}>(({ ch, offset, translateX, topOffset, width, height, borderRadius, border, isFocused, isUnderCenter, posterSrc, onPlay }) => {
+  // Surface Cache Shielding: apenas os cards contíguos (-2 a +2) renderizam a imagem
+  // Os das bordas mantêm o DOM, mas eliminam a imagem da GPU.
+  const isFarEdge = offset <= -3 || offset >= 3
+  const isEdge = offset <= -3 || offset >= 4
+
+  return (
+    <div onClick={() => onPlay(ch)} style={{
+      position: 'absolute', 
+      top: topOffset,
+      width, height,
+      zIndex: isUnderCenter ? 0 : 1,
+      borderRadius,
+      cursor: 'pointer', overflow: 'hidden',
+      border,
+      background: '#111',
+      transform: `translate3d(${translateX}px, 0px, 0px)`,
+      opacity: isUnderCenter ? 0 : (isFocused ? 1 : 0.6),
+      // Tizen Bug Fix: 'visibility: hidden' is strictly required for the hole-punch layer to completely ignore this node
+      // otherwise, Webkit might composite a 0-opacity RGB buffer over the hardware video layer!
+      visibility: isUnderCenter ? 'hidden' : 'visible',
+      // NETFLIX SLIDE: a chave agora é baseada no canal (ci), não no slot (offset)
+      // Isso garante que cada canal tenha seu próprio DOM element que REALMENTE se move
+      // quando o translateX muda. A CSS transition aqui ANIMA esse movimento.
+      transition: isFocused && !isEdge
+        ? 'transform 380ms cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 300ms ease-out, visibility 300ms step-end'
+        : 'none',
+      willChange: 'transform, opacity',
+      WebkitBackfaceVisibility: 'hidden' as any,
+    }}>
+      <img src={isFarEdge ? undefined : (posterSrc || undefined)} style={{
+        position: 'absolute', left: 0, top: 0,
+        width: '100%', height: '100%', objectFit: 'cover',
+        zIndex: 1, display: isFarEdge ? 'none' : 'block',
+      }} />
+      {offset === -1 && !isFarEdge && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          background: 'rgba(0, 0, 0, 0.25)',
+          zIndex: 2, pointerEvents: 'none'
+        }} />
+      )}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, height: '45%',
+        background: 'linear-gradient(transparent, rgba(0,0,0,0.85))',
+        zIndex: 3,
+      }} />
+      <div style={{
+        position: 'absolute', bottom: 12, left: 14, right: 14,
+        zIndex: 4, fontSize: 16, fontWeight: 800, color: '#fff',
+        textShadow: '0 2px 6px rgba(0,0,0,1)', lineHeight: 1.2,
+        overflow: 'hidden', textOverflow: 'ellipsis',
+        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+      }}>
+        {ch.name.replace(/[\[\]\{\}\(\)]/g, '').trim()}
+      </div>
+    </div>
+  )
+}, (prev, next) => {
+  // Netflix sliding: re-render quando o translateX muda (canal se moveu) ou identidade do canal mudou
+  return prev.ch.id === next.ch.id &&
+         prev.translateX === next.translateX &&
+         prev.topOffset === next.topOffset &&
+         prev.isFocused === next.isFocused &&
+         prev.isUnderCenter === next.isUnderCenter
+})
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMPONENT
@@ -119,8 +196,8 @@ function loadNavState(): { focusZone?: string; contentRow?: number; contentCols?
 
 export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const saved = useRef(loadNavState()).current
-  const [focusZone,   setFocusZone]   = useState<FocusZone>((saved?.focusZone as FocusZone) || 'hero')
-  const [heroState,   setHeroState]   = useState<HeroState>(saved?.focusZone === 'content' ? 'collapsed' : 'default')
+  const [focusZone,   setFocusZone]   = useState<FocusZone>((saved?.focusZone as FocusZone) === 'topbar' ? 'topbar' : 'content')
+  const [heroState,   setHeroState]   = useState<HeroState>('collapsed')
   const [sidebarIdx,  setSidebarIdx]  = useState(0)
   const [topbarIdx,   setTopbarIdx]   = useState(0)
   const [contentRow,  setContentRow]  = useState(saved?.contentRow ?? 0)
@@ -131,12 +208,25 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   const [isLoadingContent, setIsLoadingContent] = useState(false)
   const [content, setContent] = useState<ScreenContent | null>(null)
   const [heroSlides, setHeroSlides] = useState<HeroSlide[]>(mockHeroSlides)
-  const [heroAutoplayReady, setHeroAutoplayReady] = useState(false)
+  const [heroAutoplayReady] = useState(false)
+
+  // Cor dinâmica: verde para TV ao vivo, rosa para o resto
+  const ACCENT = activeView === 'live' ? '#10b981' : '#ff006e'
+  const GLOW   = activeView === 'live' ? 'rgba(16, 185, 129, 0.4)' : 'rgba(255, 0, 110, 0.4)'
+  const FOCUS_BORDER = `3px solid ${ACCENT}`
 
   // ─── Video Preview Inteligente (Netflix-style) ─────────────────────
   const videoPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [previewTarget, setPreviewTarget] = useState<{ rowIdx: number; colIdx: number; url: string } | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  // ─── Display toggle para liberar RAM durante o fullscreen ────────────
+  const [homeVisible, setHomeVisible] = useState(true)
+  useEffect(() => {
+    const unsub = expandManager.registerDisplayCallback((visible) => {
+      setHomeVisible(visible)
+    })
+    return () => { unsub() }
+  }, [])
   
   // ─── Block Rendering Progressivo (Tizen-safe) ──────────────────────
   // Bloco 1: Hero + primeiras 3 rows (instantâneo)
@@ -166,20 +256,36 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
 
   // ─── Video Preview: cancela debounce ao navegar ────────────────────
   useEffect(() => {
-    // Quando o usuário navega (muda row ou coluna), cancela preview pendente
     if (videoPreviewTimer.current) {
       clearTimeout(videoPreviewTimer.current)
       videoPreviewTimer.current = null
     }
-    // Limpa preview ativo ao mudar de row
-    setPreviewTarget(null)
-    // Limpa elemento de vídeo para liberar decoder
     if (videoRef.current) {
       videoRef.current.pause()
-      videoRef.current.removeAttribute('src')
-      videoRef.current.load()
+      videoRef.current.src = ''
     }
   }, [contentRow, contentCols])
+
+  // ─── Preload de imagens adjacentes (±3 cards) ─────────────────────
+  // Garante que os posters já estejam no cache do browser antes do usuário chegar
+  useEffect(() => {
+    if (focusZone !== 'content' || !rows[contentRow]) return
+    const row = rows[contentRow]
+    const col = contentCols[contentRow] || 0
+    const total = row.channels.length
+    if (total === 0) return
+
+    for (let offset = -3; offset <= 3; offset++) {
+      if (offset === 0) continue
+      const idx = ((col + offset) % total + total) % total
+      const ch = row.channels[idx]
+      if (!ch) continue
+      const t = row.tmdb?.get(ch.name) || ch.tmdb
+      const sart = getSportsArtwork(ch.name)
+      const src = sart?.poster || tmdbImg(t?.poster, 'w342') || tmdbImg(t?.backdrop, 'w342') || ch.logo
+      if (src) { const img = new Image(); img.src = src }
+    }
+  }, [contentRow, contentCols, focusZone, rows])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -223,24 +329,33 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
 
     setIsLoadingContent(true)
     const load = async () => {
-      let data: ScreenContent
-      switch (activeView) {
-        case 'movies': data = await buildFilmesContent(groups); break
-        case 'series': data = await buildSeriesContent(groups); break
-        case 'live':   data = await buildTvContent(groups);     break
-        default:       data = await buildHomeContent(groups);   break
-      }
-      if (!cancelled) {
-        contentCache.current[activeView] = data  // Salva no cache
-        setContent(data)
-        setIsLoadingContent(false)
-        setContentRow(0)
-        setMaxRenderedRow(3) // ★ Reset lazy loading
-        setContentCols(prev => {
-          if (prev.length === data.rows.length) return prev
-          return new Array(data.rows.length).fill(0)
-        })
-        setHeroSlides(buildHeroSlidesFromData(data, activeView))
+      loadingObserver.lock() // ★ Bloqueia input do controle durante o processamento
+      try {
+        let data: ScreenContent
+        const t0 = performance.now()
+        switch (activeView) {
+          case 'movies': data = await buildFilmesContent(groups); break
+          case 'series': data = await buildSeriesContent(groups); break
+          case 'live':   data = await buildTvContent(groups);     break
+          default:       data = await buildHomeContent(groups);   break
+        }
+        Logger.boot('BUILD_CONTENT', `${activeView} em ${(performance.now() - t0).toFixed(1)}ms, ${data.rows.length} rows`)
+        if (!cancelled) {
+          playerManager.init() // ★ Motor de vídeo desperta apenas agora
+          contentCache.current[activeView] = data  // Salva no cache
+          setContent(data)
+          setIsLoadingContent(false)
+          setContentRow(0)
+          setMaxRenderedRow(3) // ★ Reset lazy loading
+          setContentCols(prev => {
+            if (prev.length === data.rows.length) return prev
+            return new Array(data.rows.length).fill(0)
+          })
+          setHeroSlides(buildHeroSlidesFromData(data, activeView))
+        }
+      } finally {
+        // ★ GARANTE que a TV nunca fique travada esperando o fim do load
+        loadingObserver.unlock()
       }
     }
     load()
@@ -258,9 +373,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           subtitle: ch.group || 'destaque',
           description: tmdb?.overview || `Assista ${ch.name} com a melhor qualidade na ziiiTV.`,
           badge: 'Em destaque',
-          backgroundImage: tmdb?.backdrop
-            ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop}`
-            : (ch.logo || `https://picsum.photos/1920/1080?random=${idx + 300}`),
+          backgroundImage: tmdbImg(tmdb?.backdrop, 'w1280') || ch.logo || `https://picsum.photos/1920/1080?random=${idx + 300}`,
           type: 'channel' as const,
           channel: ch,
         }
@@ -285,9 +398,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           subtitle: view === 'movies' ? 'Filme' : 'Série',
           description: tmdb?.overview || `Assista ${ch.name} com a melhor qualidade.`,
           badge: 'Destaque',
-          backgroundImage: tmdb?.backdrop
-            ? `https://image.tmdb.org/t/p/w1280${tmdb.backdrop}`
-            : `https://picsum.photos/1920/1080?random=${idx + 200}`,
+          backgroundImage: tmdbImg(tmdb?.backdrop, 'w1280') || `https://picsum.photos/1920/1080?random=${idx + 200}`,
           type: view === 'movies' ? 'movie' as const : 'series' as const,
           tmdbId: tmdb?.tmdbId || undefined,
           channel: ch
@@ -296,34 +407,13 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
     }
   }
 
-  // ─── Delay heroAutoplay (não compete com boot da TV) ──────────────────
-  useEffect(() => {
-    if (!isLoadingContent && rows.length > 0) {
-      const t = setTimeout(() => setHeroAutoplayReady(true), 8000)
-      return () => clearTimeout(t)
-    } else {
-      setHeroAutoplayReady(false)
-    }
-  }, [isLoadingContent])
-
   const rows: ContentRow[] = content?.rows || []
-  
-  console.log('[HomeScreen] Render:', { 
-    contentExists: !!content, 
-    rowsCount: rows.length,
-    heroSlidesCount: heroSlides.length,
-    focusZone,
-    activeView
-  })
 
-  // Netflix-style hero autoplay configs
-  const heroAutoplayConfig = useMemo(() => ({
+  const heroAutoplayConfig = {
     previewDuration: 30_000,
-    getSeekOffset: (ch: Channel) => getHeroOffset(ch.name),
-    onStopped: (ch: Channel, offsetMs: number) => {
-      saveHeroOffset(ch.name, offsetMs)
-    },
-  }), [])
+    getSeekOffset: (_ch: Channel) => 0,
+    onStopped: (_ch: Channel, _offsetMs: number) => {},
+  }
 
   const [liveTmdbData, setLiveTmdbData] = useState<Record<string, TMDBResult | null>>({})
   const [debouncedPreview, setDebouncedPreview] = useState<Channel | null>(null)
@@ -338,13 +428,40 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   }, [previewChannel])
 
   useEffect(() => {
+    let cancelled = false
     if (debouncedPreview) {
       const name = debouncedPreview.name
       if (liveTmdbData[name] === undefined && !rows[contentRow]?.tmdb?.has(name)) {
-        enrichChannel(name).then(res => setLiveTmdbData(prev => ({ ...prev, [name]: res })))
+        enrichChannel(name).then(res => {
+          if (!cancelled) setLiveTmdbData(prev => ({ ...prev, [name]: res }))
+        })
       }
     }
+    return () => { cancelled = true }
   }, [debouncedPreview, contentRow, rows, liveTmdbData])
+
+  // ─── Manifest Pre-Warming (Hardware Shielding) ──────────────────────────
+  useEffect(() => {
+    if (focusZone !== 'content' || !rows[contentRow]) return
+
+    const col = contentCols[contentRow]
+    const channels = rows[contentRow].channels
+
+    // Encontra a stream SD
+    const getSDStream = (ch: Channel) => {
+      if (!ch?.streams?.length) return null
+      return [...ch.streams].sort((a,b) => {
+        const Q: Record<string, number> = { 'SD': 1, 'HD': 2, 'FHD': 3, '4K': 4 }
+        return (Q[a.quality] || 5) - (Q[b.quality] || 5)
+      })[0]?.url
+    }
+
+    const prevUrl = getSDStream(channels[col - 1])
+    const nextUrl = getSDStream(channels[col + 1])
+
+    if (prevUrl) playerManager.prefetchManifest(prevUrl)
+    if (nextUrl) playerManager.prefetchManifest(nextUrl)
+  }, [focusZone, contentRow, contentCols, rows])
 
   // ─── Refs ─────────────────────────────────────────────────────────────
   const focusZoneRef   = useRef(focusZone)
@@ -367,51 +484,52 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   showExitRef.current    = showExit
   exitFocusRef.current   = exitFocus
 
-  // ─── Scroll: fix jump — mantém alinhamento Netflix-style ──────────────
-  //
-  // Em vez de colapsar o banner mudando height (que causa o jump),
-  // o layout usa position:sticky no topbar e position:relative no wrapper.
-  // O banner vai de 87vh → 0 com overflow:hidden + transition,
-  // e o viewport NÃO faz scroll — as rows simplesmente sobem para o topo.
+  // ─── Navegação Vertical Estática (Zero Layout Shift via GPU + Vanilla JS Bypass) ───
+  // O translateY é aplicado DIRETAMENTE no DOM via Vanilla JS.
+  // Isso evita que o React re-renderize 1300 linhas de código a cada toque no D-pad.
   const rowRefs    = useRef<(HTMLDivElement | null)[]>([])
   const rowsWrapRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    // Quando voltamos para hero/topbar, garante que as rows não estejam scrolladas
-    if (focusZone !== 'content') return
+    if (!rowsWrapRef.current) return
+    const vh = window.innerHeight
+    
+    if (focusZone !== 'content') {
+      // Volta para baixo confiavelmente (fora da tela visual)
+      rowsWrapRef.current.style.transform = `translate3d(0, ${vh * 0.7}px, 0)`
+      return
+    }
     const row = rowRefs.current[contentRow]
-    if (row && rowsWrapRef.current) {
-      // Scroll suave só dentro do wrapper de rows
-      const wrapper = rowsWrapRef.current
-      if (contentRow === 0) {
-        // A primeira linha nunca precisa de offset, e evita bug por conta do paddingTop animando
-        wrapper.scrollTo({ top: 0, behavior: 'smooth' })
-      } else {
-        const rowTop = row.offsetTop
-        const wrapperHeight = wrapper.clientHeight
-        const rowHeight = row.clientHeight
-        
-        // Centraliza a row focada, deixando espaço para ver a próxima
-        const targetScroll = rowTop - (wrapperHeight - rowHeight) / 2 + 100
-        wrapper.scrollTo({ top: targetScroll, behavior: 'smooth' })
-      }
+    if (row) {
+      const rowTop = row.offsetTop
+      const rowHeight = row.clientHeight
+      const targetScroll = rowTop - (vh - rowHeight) / 2
+      // Vanilla JS Bypass: aplica direto no DOM
+      rowsWrapRef.current.style.transform = `translate3d(0, -${targetScroll}px, 0)`
     }
   }, [contentRow, focusZone])
 
-  // Quando saímos do content, reseta scroll das rows para o topo
+  // LEVEZA E LIMPEZA: Log de Memory Flush ao sair da Home
   useEffect(() => {
-    if (focusZone !== 'content' && rowsWrapRef.current) {
-      rowsWrapRef.current.scrollTo({ top: 0, behavior: 'smooth' })
+    return () => {
+      Logger.mem('FLUSH', 'HomeScreen unmounted - RAM liberada forçadamente pelo React')
     }
-  }, [focusZone])
+  }, [])
 
   // ─── D-pad Navigation ────────────────────────────────────────────────
-  useEffect(() => {
-    let lastT = 0
-    const onKey = (e: KeyboardEvent) => {
-      const now = Date.now()
-      if (now - lastT < 120) return
-      lastT = now
+  const lastTRef = useRef(0)
+  
+  const onKey = (e: KeyboardEvent) => {
+    const now = Date.now()
+    if (now - lastTRef.current < 200) return
+    lastTRef.current = now
+
+    // BUG 1 FIX: Navegação cancela autoplay, mas Enter NÃO cancela (ele expande para fullscreen).
+    // O cancelamento é fire-and-forget: limpa o debounce mas não para o vídeo se já estiver tocando.
+    const isNavKey = e.keyCode === 37 || e.keyCode === 38 || e.keyCode === 39 || e.keyCode === 40
+    if (focusZoneRef.current === 'content' && isNavKey) {
+      playerManager.cancelRequest()
+    }
 
       if (showExitRef.current) {
         if      (e.key === 'ArrowLeft'  || e.keyCode === 37) { e.preventDefault(); setExitFocus(0) }
@@ -430,6 +548,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       const zone  = focusZoneRef.current
       const rw    = contentRowRef.current
       const cols  = contentColsRef.current
+      // Leitura atômica via Zustand fora do ciclo de renderização
+      // Instante milissegundos bypass React (usamos o Zustand via dispatch se necessário)
       const allRows = rowsRef.current
 
       if (e.keyCode === 10009 || e.keyCode === 8 || e.key === 'Backspace') {
@@ -464,7 +584,22 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
               setActiveView(viewMap[cat.name.toLowerCase()] || 'home')
             } else {
               const ch = row.channels[cols[rw]]
-              if (ch) { recordPlay(ch.name, ch.group); onPlay(ch) }
+              if (ch) {
+                // Se o PlayerManager está tocando, dispara expansão fullscreen diretamente
+                if (playerManager.isPlaying()) {
+                  playerManager.expandToFullscreen()
+                  expandManager.triggerExpand(ch, { x: 0, y: 0, w: 1920, h: 1080 }, 'avplay-global-preview', () => {
+                    playerManager.collapseToCard()
+                    expandManager.markCollapsing()
+                    setTimeout(() => expandManager.markIdle(), 50)
+                  })
+                  expandManager.markFullscreen()
+                  return
+                }
+                // Caso contrário, navega para DetailScreen
+                recordPlay(ch.name, ch.group)
+                onPlay(ch)
+              }
             }
           }
         }
@@ -487,19 +622,17 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
       }
 
       if (zone === 'topbar') {
-        if      (isRight) setTopbarIdx(i => Math.min(i + 1, TOPBAR_LINKS.length - 1))
-        else if (isLeft) {
+        if (isRight) {
+          if (topbarRef.current >= TOPBAR_LINKS.length - 1) {
+            debugStore.toggle()
+          } else {
+            setTopbarIdx(i => Math.min(i + 1, TOPBAR_LINKS.length - 1))
+          }
+        } else if (isLeft) {
           if (topbarRef.current <= 0) setFocusZone('sidebar')
           else setTopbarIdx(i => Math.max(i - 1, 0))
         }
-        else if (isDown)  { setFocusZone('hero'); setHeroState('focused') }
-        return
-      }
-
-      if (zone === 'hero') {
-        if      (isUp)   { setFocusZone('topbar'); setHeroState('default') }
-        else if (isDown) { setFocusZone('content'); setHeroState('collapsed'); setContentRow(0) }
-        else if (isLeft) { setFocusZone('sidebar') }
+        else if (isDown)  { setFocusZone('content'); setContentRow(0) }
         return
       }
 
@@ -523,24 +656,39 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           if (isGrid && c >= 4) {
             const next = [...cols]; next[rw] = c - 4; setContentCols(next)
           } else if (rw === 0) {
-            setFocusZone('hero'); setHeroState('focused')
+            setFocusZone('topbar')
           } else {
             setContentRow(rw - 1)
           }
         } else if (isRight) {
           if (isGrid && (c === 3 || c === 7)) return // stay in grid
           const maxCol = (rowData?.channels.length || 1) - 1
-          if (c < maxCol) { const next = [...cols]; next[rw]++; setContentCols(next) }
+          // Lista infinita circular: passar do fim volta ao início
+          const next = [...cols]
+          next[rw] = c >= maxCol ? 0 : c + 1
+          setContentCols(next)
         } else if (isLeft) {
-          if (isGrid && (c === 0 || c === 4)) { setFocusZone('sidebar') }
-          else if (c > 0) { const next = [...cols]; next[rw]--; setContentCols(next) }
-          else { setFocusZone('sidebar') }
+          if (isGrid && (c === 0 || c === 4)) { /* Bloqueado: ir pro menu topo primeiro */ }
+          else {
+            // Lista infinita circular: passar do início volta ao fim
+            const maxCol = (rowData?.channels.length || 1) - 1
+            const next = [...cols]
+            next[rw] = c <= 0 ? maxCol : c - 1
+            setContentCols(next)
+          }
         }
         return
       }
     }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    
+  const handlerRef = useRef(onKey)
+  handlerRef.current = onKey
+
+  useEffect(() => {
+    // ★ Bypass Global Key Listener Vanilla JS 
+    const wrapper = (e: KeyboardEvent) => handlerRef.current(e)
+    window.addEventListener('keydown', wrapper)
+    return () => window.removeEventListener('keydown', wrapper)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Persist ─────────────────────────────────────────────────────────
@@ -549,7 +697,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
   }, [focusZone, contentRow, contentCols, activeView])
 
   // Helpers de estilo
-  const isHeroVisible = focusZone !== 'content'
   const topbarItemGlow = (active: boolean) => active
     ? {
         boxShadow: '0 0 0 2px #ff006e, 0 0 18px rgba(255,0,110,0.55), 0 0 40px rgba(255,0,110,0.2)',
@@ -559,14 +706,21 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
 
   // ═══════════════════════════════════════════════════════════════════════
   // RENDER
-  // ═══════════════════════════════════════════════════════════════════════
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      background: BG, color: '#fff',
+      // TIZEN HOLE PUNCH: O container raiz DEVE ser transparent.
+      // O AVPlay renderiza como layer de hardware ABAIXO do HTML.
+      // Qualquer background sólido aqui tamparia 100% do vídeo.
+      // Cada seção que precisar de fundo preto tem seu próprio background localizado.
+      background: 'transparent',
+      color: '#fff',
       fontFamily: "'Outfit', sans-serif",
       overflow: 'hidden',
+      opacity: homeVisible ? 1 : 0, 
+      pointerEvents: homeVisible ? 'auto' : 'none',
     }}>
+
 
       {/* ── SIDEBAR (Minimalista Enterprise) — Sobreposição Absoluta ─── */}
       <div style={{
@@ -578,17 +732,16 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         height: focusZone === 'sidebar' ? '100%' : 16,
         borderRadius: focusZone === 'sidebar' ? 0 : 8,
         background: focusZone === 'sidebar' ? 'rgba(10,10,10,0.97)' : '#ff006e',
-        backdropFilter: 'blur(20px)',
         border: focusZone === 'sidebar' ? '1px solid rgba(255,0,110,0.3)' : 'none',
         boxShadow: focusZone === 'sidebar'
-          ? '0 0 60px rgba(255,0,110,0.5), inset 0 0 30px rgba(255,0,110,0.05)'
-          : '0 0 24px rgba(255,0,110,0.8), 0 0 8px rgba(255,0,110,1)',
+          ? '0 0 20px rgba(255,0,110,0.3)'
+          : '0 0 8px rgba(255,0,110,0.6)',
         zIndex: 999,
-        display: 'flex', flexDirection: 'column',
+        display: 'flex', flexDirection: 'column' as const,
         alignItems: focusZone === 'sidebar' ? 'flex-start' : 'center',
         justifyContent: focusZone === 'sidebar' ? 'flex-start' : 'center',
         paddingTop: focusZone === 'sidebar' ? 120 : 0,
-        transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
+        transition: 'width 350ms ease-out, height 350ms ease-out, top 350ms ease-out, left 350ms ease-out, background 350ms ease-out, border-radius 350ms ease-out, opacity 350ms ease-out',
         overflow: 'hidden',
       }}>
         {/* Quando fechado não tem mais "z", é apenas a bolinha que editamos acima */}
@@ -614,8 +767,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                 borderRadius: 24,
                 color: isActive ? '#fff' : 'rgba(255,255,255,0.4)',
                 background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
-                boxShadow: isActive ? `0 0 0 2px ${ACCENT}, 0 0 16px ${GLOW}` : 'none',
-                transition: 'all 300ms cubic-bezier(0.25,1,0.5,1)',
+                boxShadow: isActive ? `0 0 0 2px ${ACCENT}` : 'none',
+                transition: 'background 200ms ease, color 200ms ease, box-shadow 200ms ease',
               }}>
                 <div style={{
                   width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -652,14 +805,10 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
         zIndex: 90,
         height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '0 80px',
-        background: focusZone === 'hero'
-          ? 'linear-gradient(to bottom, rgba(0,0,0,0.5), transparent)'
-          : isHeroVisible
-            ? 'linear-gradient(to bottom, rgba(0,0,0,0.85), rgba(0,0,0,0.4), transparent)'
-            : 'rgba(0,0,0,0.92)',
+        background: 'rgba(0,0,0,0.92)',
         borderBottom: focusZone === 'topbar' ? '2px solid #ff006e' : '2px solid transparent',
-        boxShadow: focusZone === 'topbar' ? '0 4px 24px rgba(255,0,110,0.4)' : 'none',
-        transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
+        boxShadow: focusZone === 'topbar' ? '0 2px 12px rgba(255,0,110,0.3)' : 'none',
+        transition: 'background 350ms ease, border-color 200ms ease, box-shadow 200ms ease, opacity 350ms ease, transform 350ms ease',
       }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           {TOPBAR_LINKS.map((link, i) => {
@@ -669,7 +818,7 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
               <div key={i} style={{
                 fontSize: 18, fontWeight: 700, textTransform: 'lowercase',
                 color: active ? '#fff' : (isCurrentView ? ACCENT : 'rgba(255,255,255,0.35)'),
-                padding: '6px 14px', borderRadius: 20,
+                padding: '6px 14px', borderRadius: 4,
                 transition: 'all 220ms',
                 whiteSpace: 'nowrap',
                 borderBottom: isCurrentView && !active ? `2px solid ${ACCENT}` : '2px solid transparent',
@@ -688,10 +837,11 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           position: 'absolute',
           top: 0, left: 0, right: 0, bottom: 0,
           overflow: 'hidden',
-          transition: 'all 520ms cubic-bezier(0.25,1,0.5,1)',
+          transition: 'border-color 200ms ease, opacity 350ms ease-out',
           zIndex: focusZone === 'content' ? 0 : 10,
+          opacity: focusZone === 'hero' ? 1 : 0,
+          pointerEvents: focusZone === 'hero' ? 'auto' : 'none',
           border: focusZone === 'hero' ? '2px solid #ff006e' : '2px solid transparent',
-          boxShadow: focusZone === 'hero' ? '0 0 32px rgba(255,0,110,0.55), 0 0 80px rgba(255,0,110,0.25)' : 'none',
         }}>
           <HeroBanner
             slides={heroSlides}
@@ -699,8 +849,6 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             focused={focusZone === 'hero'}
             hideUI={focusZone === 'content'}
             heroAutoplay={activeView === 'home' && heroAutoplayReady ? heroAutoplayConfig : undefined}
-            previewOverrideChannel={focusZone === 'content' ? debouncedPreview : undefined}
-            previewOverrideImage={focusZone === 'content' && debouncedPreview && liveTmdbData[debouncedPreview.name]?.backdrop ? `https://image.tmdb.org/t/p/w1280${liveTmdbData[debouncedPreview.name]?.backdrop}` : undefined}
             onSelect={(slide) => {
               if (slide.type === 'live') {
                 const channel = Object.values(groups).flat().find(ch =>
@@ -724,6 +872,15 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
             textAlign: 'center',
             zIndex: 100
           }}>
+            <div style={{
+              width: 36,
+              height: 36,
+              margin: '0 auto 18px',
+              borderRadius: '50%',
+              border: '3px solid rgba(255,255,255,0.22)',
+              borderTopColor: ACCENT,
+              animation: 'spin 800ms linear infinite',
+            }} />
             <div>Carregando conteúdo...</div>
             <div style={{ fontSize: 16, color: '#888', marginTop: 12 }}>
               {Object.keys(groups).length === 0 ? 'Aguardando playlist...' : 'Processando canais...'}
@@ -731,40 +888,60 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           </div>
         ) : null}
         <div
-          ref={rowsWrapRef}
+          id="scroll-viewport"
           style={{
             position: 'absolute',
             top: 0, left: 0, right: 0, bottom: 0,
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            paddingTop: focusZone === 'content' ? '100px' : 'calc(100vh - 220px)',
-            transition: 'padding-top 520ms cubic-bezier(0.25,1,0.5,1)',
-            scrollBehavior: 'smooth',
+            overflow: 'hidden', // Tizen Hardware Otimization: ZERO NATIVE SCROLL
             zIndex: 15,
-            background: focusZone === 'content' ? 'linear-gradient(to bottom, rgba(20,20,20,0.95) 0%, rgba(10,10,10,1) 20%, #000 100%)' : 'transparent',
+            pointerEvents: focusZone === 'content' ? 'auto' : 'none',
           }}
         >
+          <div
+            ref={rowsWrapRef}
+            style={{
+              paddingTop: '50vh', // Espaço estático; o JS calcula o offset a partir daqui
+              transition: 'transform 350ms ease-out, opacity 350ms ease-out',
+              // O transform é controlado via Vanilla JS Bypass (useEffect acima)
+              willChange: 'transform',
+              
+            // Banner ativo = full screen, esconde rows completamente
+            opacity: focusZone === 'content' ? 1 : 0,
+            // Fundo transparente para o vídeo de hardware <object> aparecer!
+            background: 'transparent',
+          }}
+        >
+          {/* Gradiente apenas nas bordas - NAO cobre a area central onde o card fica */}
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, height: '15%', pointerEvents: 'none', zIndex: 200,
+            background: 'linear-gradient(to bottom, #000 0%, transparent 100%)',
+            opacity: focusZone === 'content' ? 0.7 : 0,
+            transition: 'opacity 350ms ease-out'
+          }} />
+          <div style={{
+            position: 'fixed', bottom: 0, left: 0, right: 0, height: '15%', pointerEvents: 'none', zIndex: 200,
+            background: 'linear-gradient(to top, #000 0%, transparent 100%)',
+            opacity: focusZone === 'content' ? 0.7 : 0,
+            transition: 'opacity 350ms ease-out'
+          }} />
+
+          {/* ESPAÇADOR VIRTUAL ESTÁTICO: Mantém o eixo Y inabalável 
+              Isso garante que TODA a home tenha o efeito "Preso" (slot machine instantâneo)
+              que antes só acontecia após a linha 4. */}
+          {(() => {
+            const missingTopRows = Math.max(0, 3 - contentRow)
+            if (missingTopRows > 0) {
+              const vw = window.innerWidth / 1920
+              const unFocusedRowHeight = Math.round(475 * 1.10 * vw) + 60
+              return <div style={{ height: missingTopRows * unFocusedRowHeight }} />
+            }
+            return null
+          })()}
+
           {rows.map((row, rowIdx) => {
-            // ★ Block Rendering: placeholder skeleton para rows pendentes
-            if (rowIdx > maxRenderedRow) {
-              return (
-                <div key={rowIdx} style={{ height: 260, padding: '24px 80px', opacity: 0.3 }}>
-                  <div style={{ 
-                    fontSize: 22, fontWeight: 800, color: 'rgba(255,255,255,0.3)',
-                    marginBottom: 16
-                  }}>
-                    {row.title}<span style={{ color: ACCENT }}>{row.titleAccent}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    {[0,1,2,3,4].map(i => (
-                      <div key={i} style={{
-                        width: 160, height: 200, borderRadius: 10,
-                        background: 'rgba(255,255,255,0.04)',
-                      }} />
-                    ))}
-                  </div>
-                </div>
-              )
+            // ★ Virtualização Real de DOM: libera RAM agressivamente
+            if (Math.abs(contentRow - rowIdx) > 3) {
+              return null
             }
             
             const isRowFocused = focusZone === 'content' && contentRow === rowIdx
@@ -779,21 +956,32 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   padding: '24px 0',
                   paddingBottom: `${24 + extraPadding}px`,
                   overflow: 'visible',
-                  // Primeira row: padding mínimo para ficar mais perto do topo
-                  // Demais rows: padding normal para quando scrollarem para o topo
-                  paddingTop: rowIdx === 0 ? '0px' : '100px'
+                  // Extrema compactação vertical pedida
+                  paddingTop: rowIdx === 0 ? '0px' : '20px'
                 }}
               >
                 <div style={{
                   padding: '0 80px', display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'center', marginBottom: 6,
+                  alignItems: 'flex-end', marginBottom: 0,
                 }}>
                   <div style={{
-                    fontSize: 22, fontWeight: 800, textTransform: 'lowercase',
-                    color: isRowFocused ? '#fff' : 'rgba(255,255,255,0.5)',
-                    transition: 'color 200ms',
+                    fontSize: 20, fontWeight: 800,
+                    color: isRowFocused ? '#fff' : 'rgba(255,255,255,0.4)',
+                    transition: 'color 200ms', display: 'flex', alignItems: 'center', gap: 10
                   }}>
-                    {row.title}<span style={{ color: ACCENT }}>{row.titleAccent}</span>
+                    {(() => {
+                      const lower = row.title.toLowerCase()
+                      const accentSpan = <span style={{ color: ACCENT, fontSize: 18, marginTop: 2 }}>{row.titleAccent}</span>
+                      
+                      if (lower.includes('netflix')) return <><img src="https://upload.wikimedia.org/wikipedia/commons/0/08/Netflix_2015_logo.svg" style={{ height: 44, opacity: isRowFocused ? 1 : 0.6 }} /> {accentSpan}</>
+                      if (lower.includes('max') || lower.includes('hbo')) return <><img src="https://upload.wikimedia.org/wikipedia/commons/c/ce/Max_logo.svg" style={{ height: 36, margin: '2px 0 0', opacity: isRowFocused ? 1 : 0.6 }} /> {accentSpan}</>
+                      if (lower.includes('disney')) return <><img src="https://upload.wikimedia.org/wikipedia/commons/3/3e/Disney%2B_logo.svg" style={{ height: 64, margin: '-6px 0 -4px', opacity: isRowFocused ? 1 : 0.6 }} /> {accentSpan}</>
+                      if (lower.includes('apple')) return <><img src="https://upload.wikimedia.org/wikipedia/commons/2/28/Apple_TV_Plus_Logo.svg" style={{ height: 40, opacity: isRowFocused ? 1 : 0.6 }} /> {accentSpan}</>
+                      if (lower.includes('amazon') || lower.includes('prime')) return <><img src="https://upload.wikimedia.org/wikipedia/commons/f/f1/Prime_Video.png" style={{ height: 36, opacity: isRowFocused ? 1 : 0.6 }} /> {accentSpan}</>
+                      if (lower.includes('paramount')) return <><img src="https://upload.wikimedia.org/wikipedia/commons/7/79/Paramount%2B_logo.svg" style={{ height: 36, opacity: isRowFocused ? 1 : 0.6 }} /> {accentSpan}</>
+                      
+                      return <>{row.title}{accentSpan}</>
+                    })()}
                   </div>
                 </div>
 
@@ -830,170 +1018,149 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                   })}
                 </div>
               ) : (() => {
-                // ─── Layout Netflix: card focado wide, demais portrait ───
-                // Dimensões em px escaladas pelo viewport (base 1920px)
-                const CARD_W   = Math.round(317 * vw)   // portrait
-                const CARD_H   = Math.round(475 * vw)   // altura fixa
-                const WIDE_W   = Math.round(840 * vw)   // wide no foco
-                const GAP      = Math.round(16  * vw)
-                const LEFT_PAD = Math.round(80  * vw)
+                // ═══════════════════════════════════════════════════════════════
+                // LAYOUT TELVIX — Card Central FIXO + Laterais deslizam por trás
+                // ═══════════════════════════════════════════════════════════════
+                // REGRA DE OURO: O Card Central NUNCA muda de posição.
+                // Ele é ancorado em left:50%, translateX(-50%) — INABALÁVEL.
+                // Os cards laterais é que se movem via translate3d passando
+                // POR TRÁS do central (z-index inferior).
+                // ═══════════════════════════════════════════════════════════════
+                // CARDS LATERAIS (Retrato)
+                const CARD_W     = Math.round(317 * 1.10 * vw)
+                const CARD_H     = Math.round(475 * 1.10 * vw)
+                // CARD CENTRAL (Cinema 16:9 - Maior por Inteira)
+                // Usando uma base de altura maior que os laterais (+15%), e largura mantendo a proporção de cinema (~16:9)
+                const CENTRAL_H  = Math.round(CARD_H * 1.15)
+                const CENTRAL_W  = Math.round(CENTRAL_H * 1.77) // 16:9 widescreen ratio
+                
+                const GAP        = Math.round(16  * vw)
+                const SIDE_GAP   = Math.round(24  * vw)
+                const TOP_PAD    = Math.round(40  * vw)
+                
+                // Offset vertical para centralizar os cards laterais menores junto ao centro vertical do cartão gigante
+                const LATERAL_TOP_OFFSET = TOP_PAD + Math.round((CENTRAL_H - CARD_H) / 2)
 
                 const isRowFocused = focusZone === 'content' && contentRow === rowIdx
                 const focusedIndex = contentCols[rowIdx] || 0
                 const isVirtualRow = Math.abs(contentRow - rowIdx) <= 2
 
-                if (!isVirtualRow) return <div style={{ height: CARD_H + 40 }} />
-                const cameraShift = -(focusedIndex * (CARD_W + GAP))
+                if (!isVirtualRow) return <div style={{ height: CENTRAL_H + 40 }} />
+
+                // ── Dados do card central ────────────────────────
+                const fch = row.channels[focusedIndex]
+                const fT = row.tmdb?.get(fch?.name || '') || fch?.tmdb
+                const fSportsArt = getSportsArtwork(fch?.name || '')
+                const fPosterSrc = fSportsArt?.poster || tmdbImg(fT?.poster, 'w342') || fch?.logo || null
+                const fBackdropSrc = fSportsArt?.backdrop || tmdbImg(fT?.backdrop, 'w780') || fPosterSrc
+                const fQuality = fch?.activeStream?.quality
+                const fBadgeColor = fQuality && fQuality !== 'UNKNOWN' ? QUALITY_BADGE_COLOR[fQuality] : null
+                const fTextColor = fQuality === 'HD' ? '#fff' : '#000'
+
+                const centralLeft = Math.floor((window.innerWidth - CENTRAL_W) / 2)
+                const uniformCenterLeft = Math.floor((window.innerWidth - CARD_W) / 2)
 
                 return (
                   <div style={{
                     position: 'relative', width: '100%',
-                    height: CARD_H + 80,
-                    paddingTop: Math.round(40 * vw), overflow: 'visible',
+                    height: isRowFocused ? CENTRAL_H + 80 : CARD_H + 60,
+                    overflow: 'visible',
+                    // ZERO ANIMAÇÃO NO HEIGHT DA FILEIRA. Muda de fileira = estica/encolhe IMEDIATAMENTE (Zero Layout Shift)
+                    transition: 'none',
                   }}>
-                    <div style={{
-                      position: 'absolute', left: LEFT_PAD, top: Math.round(40 * vw),
-                      display: 'flex', flexDirection: 'row',
-                      alignItems: 'flex-start',
-                      transform: `translate3d(${cameraShift}px, 0, 0)`,
-                      transition: `transform ${FOCUS_DURATION}ms ${FOCUS_EASING}`,
-                      willChange: isRowFocused ? 'transform' : 'auto',
-                    }}>
-                      {row.channels.map((ch, ci) => {
-                        const diffCols = ci - focusedIndex
-                        if (diffCols < -3 || diffCols > 6) {
-                          return <div key={ci} style={{ width: CARD_W, height: CARD_H, flexShrink: 0, marginRight: GAP }} />
+
+                    {(() => {
+                      const total = row.channels.length
+                      const slots: Array<{ ch: typeof row.channels[0]; ci: number; offset: number }> = []
+                      for (let offset = -4; offset <= 5; offset++) {
+                        const ci = ((focusedIndex + offset) % total + total) % total
+                        if (offset !== 0 && slots.some(s => s.ci === ci)) continue
+                        slots.push({ ch: row.channels[ci], ci, offset })
+                      }
+                      return slots.map(({ ch, ci, offset }) => {
+                      const isUnderCenter = isRowFocused && offset === 0
+
+                      let translateX: number
+                      if (isRowFocused) {
+                        if (offset < 0) {
+                          translateX = centralLeft - SIDE_GAP - (-offset) * (CARD_W + GAP) + GAP
+                        } else if (offset > 0) {
+                          translateX = centralLeft + CENTRAL_W + SIDE_GAP + (offset - 1) * (CARD_W + GAP)
+                        } else {
+                          // Center of the big card slot
+                          translateX = centralLeft + Math.floor((CENTRAL_W - CARD_W) / 2)
                         }
-                        const isFocused  = isRowFocused && ci === focusedIndex
-                        const cardW      = isFocused ? WIDE_W : CARD_W
+                      } else {
+                        translateX = uniformCenterLeft + (offset * (CARD_W + GAP))
+                      }
+                      const activeTopOffset = isRowFocused ? LATERAL_TOP_OFFSET : TOP_PAD
 
-                        const t          = row.tmdb?.get(ch.name) || ch.tmdb
-                        const sportsArt  = getSportsArtwork(ch.name)
-                        const posterSrc  = sportsArt?.poster || (t?.poster ? `https://image.tmdb.org/t/p/w342${t.poster}` : (ch.logo || ''))
-                        const backdropSrc = sportsArt?.backdrop || (t?.backdrop ? `https://image.tmdb.org/t/p/w780${t.backdrop}` : posterSrc)
-                        const quality    = ch.activeStream?.quality
-                        const badgeColor = quality && quality !== 'UNKNOWN' ? QUALITY_BADGE_COLOR[quality] : null
-                        const textColor  = quality === 'HD' ? '#fff' : '#000'
 
-                        return (
-                          <div key={ci} onClick={() => onPlay(ch)} style={{
-                            position: 'relative',
-                            width: cardW, height: CARD_H, flexShrink: 0,
-                            marginRight: GAP,
-                            zIndex: isFocused ? 10 : 1,
-                            borderRadius: Math.round(8 * vw), cursor: 'pointer', overflow: 'hidden',
-                            boxShadow: isFocused ? FOCUS_GLOW : 'none',
-                            border: isFocused ? FOCUS_BORDER : '1px solid rgba(255,255,255,0.08)',
-                            background: '#111',
-                          }}>
-                            {/* Video Preview Inteligente (Netflix-style: 1.5s debounce) */}
-                            {(() => {
-                              // Agenda preview quando card recebe foco
-                              if (isFocused && ch.activeStream?.url) {
-                                // Agenda debounce se ainda não está agendado para este card
-                                if (!previewTarget || previewTarget.rowIdx !== rowIdx || previewTarget.colIdx !== ci) {
-                                  if (videoPreviewTimer.current) clearTimeout(videoPreviewTimer.current)
-                                  videoPreviewTimer.current = setTimeout(() => {
-                                    setPreviewTarget({ rowIdx, colIdx: ci, url: ch.activeStream!.url })
-                                  }, VIDEO_PREVIEW_DELAY)
-                                }
-                              }
-                              // Renderiza vídeo apenas se preview ativo para ESTE card
-                              const isPreviewActive = previewTarget?.rowIdx === rowIdx && previewTarget?.colIdx === ci
-                              if (!isPreviewActive) return null
-                              return (
-                                <video
-                                  ref={videoRef}
-                                  key={`preview-${rowIdx}-${ci}`}
-                                  src={previewTarget.url}
-                                  autoPlay
-                                  loop
-                                  playsInline
-                                  className="video-preview-fade"
-                                  onCanPlay={(e) => {
-                                    const video = e.currentTarget
-                                    if (video.seekable.length > 0 && video.duration > 240) {
-                                      video.currentTime = 240
-                                    }
-                                  }}
-                                  style={{
-                                    position: 'absolute', left: 0, top: 0,
-                                    width: WIDE_W, height: CARD_H, objectFit: 'cover',
-                                    zIndex: 5, display: 'block',
-                                  }}
-                                />
-                              )
-                            })()}
-                            {/* Backdrop wide — sempre presente (carregado, estático) */}
-                            <img src={backdropSrc || undefined} loading="lazy" style={{
-                              position: 'absolute', left: 0, top: 0,
-                              width: WIDE_W, height: CARD_H, objectFit: 'cover',
-                              zIndex: 1, display: 'block',
-                            }} />
-                            {/* Poster portrait — some INSTANTANEAMENTE quando focado (sem transition) */}
-                            <img src={posterSrc || undefined} loading="lazy" style={{
-                              position: 'absolute', left: 0, top: 0,
-                              width: CARD_W, height: CARD_H, objectFit: 'cover',
-                              zIndex: 2, display: 'block',
-                              visibility: isFocused ? 'hidden' : 'visible',
-                            }} />
-                            {/* Gradiente inferior */}
-                            <div style={{
-                              position: 'absolute', bottom: 0, left: 0, right: 0, height: '50%',
-                              background: 'linear-gradient(transparent, rgba(0,0,0,0.92))',
-                              zIndex: 3,
-                            }} />
-                            
-                            {/* Título dentro do card (parte inferior) */}
-                            <div style={{
-                              position: 'absolute', bottom: 12, left: 12, right: 12,
-                              zIndex: 4,
-                              fontFamily: CARD_FONTS[ci % CARD_FONTS.length],
-                              fontSize: isFocused ? 72 : 14,
-                              fontWeight: 700,
-                              color: '#fff',
-                              textShadow: '0 4px 12px rgba(0,0,0,0.9)',
-                              lineHeight: 1.1,
-                              wordWrap: 'break-word',
-                              whiteSpace: 'normal',
-                            }}>
-                              {ch.name.replace(/[\[\]\{\}\(\)]/g, '').trim()}
-                            </div>
-                            
-                            {/* Logo do Canal/Streaming (visivel apenas no card Wide) */}
-                            {isFocused && ch.logo && (
-                              <img src={ch.logo} style={{
-                                position: 'absolute', bottom: 8, right: 14,
-                                maxWidth: 56, maxHeight: 34,
-                                objectFit: 'contain', zIndex: 5,
-                                filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.9))',
-                                opacity: 0.95
-                              }} onError={(e) => (e.currentTarget.style.display = 'none')} />
-                            )}
-                            {/* Badge de Qualidade */}
-                            {badgeColor && (
-                              <div style={{
-                                position: 'absolute', top: 8, right: 8,
-                                background: badgeColor, color: textColor,
-                                fontSize: 11, fontWeight: 800,
-                                padding: '2px 7px', borderRadius: 4,
-                                letterSpacing: 0.8, zIndex: 6,
-                                boxShadow: '0 2px 6px rgba(0,0,0,0.5)',
-                              }}>{quality}</div>
-                            )}
-                            {/* Indicador de m\u00faltiplas qualidades */}
-                            {ch.variantCount > 1 && (
-                              <div style={{
-                                position: 'absolute', bottom: 40, right: 8,
-                                background: 'rgba(0,0,0,0.65)', color: '#aaa',
-                                fontSize: 10, fontWeight: 600,
-                                padding: '2px 6px', borderRadius: 4, zIndex: 6,
-                              }}>{ch.variantCount} op\u00e7\u00f5es</div>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
+                      const t         = row.tmdb?.get(ch.name) || ch.tmdb
+                      const sportsArt = getSportsArtwork(ch.name)
+                      const posterSrc = sportsArt?.poster || tmdbImg(t?.poster, 'w342') || ch.logo || ''
+
+                      return (
+                        <MemoizedSideCard
+                          /* NETFLIX SLIDE: key baseada no CANAL (ci), não no slot (offset).
+                             Isso dá a cada canal seu próprio DOM persistente.
+                             Quando focusedIndex muda, o translateX de cada canal muda,
+                             e a CSS transition anima o deslize real — exatamente como Netflix. */
+                          key={`pool-${rowIdx}-${ci}`}
+                          ci={ci}
+                          ch={ch}
+                          offset={offset}
+                          translateX={translateX}
+                          topOffset={activeTopOffset}
+                          width={CARD_W}
+                          height={CARD_H}
+                          borderRadius={Math.round(8 * vw)}
+                          border="1px solid rgba(255,255,255,0.08)"
+                          isFocused={isRowFocused}
+                          isUnderCenter={isUnderCenter}
+                          posterSrc={posterSrc}
+                          onPlay={onPlay}
+                        />
+                      )
+                    }) })()}
+
+                    {/* ════════════════════════════════════════════════
+                        CARD CENTRAL — FIXO, INABALÁVEL, NUNCA MOVE
+                        left: centralizado via cálculo estático
+                        z-index: 10 (SEMPRE na frente dos laterais)
+                        ════════════════════════════════════════════════ */}
+                    {/* CARD CENTRAL — Apenas visível na linha focada */}
+                    {fch && isRowFocused && (
+                      <AutoplayCard
+                        channel={fch}
+                        isFocused={true}
+                        onClick={() => { recordPlay(fch.name, fch.group); onPlay(fch) }}
+                        width={CENTRAL_W}
+                        height={CENTRAL_H}
+                        left={centralLeft}
+                        top={TOP_PAD}
+                        zIndex={10}
+                        borderRadius={Math.round(8 * vw)}
+                        focusBorder={FOCUS_BORDER}
+                        backdropSrc={fBackdropSrc || null}
+                      >
+                        <div style={{
+                          position: 'absolute', bottom: 16, left: 16, right: 16,
+                          zIndex: 4, fontSize: 38, fontWeight: 800, color: '#fff',
+                          textShadow: '0 4px 12px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,1)', lineHeight: 1.1,
+                          wordWrap: 'break-word', whiteSpace: 'normal',
+                        }}>
+                          {fch.name.replace(/[\[\]\{\}\(\)]/g, '').trim()}
+                        </div>
+                        {fBadgeColor && (
+                          <div style={{
+                            position: 'absolute', top: 8, right: 8, background: fBadgeColor, color: fTextColor,
+                            fontSize: 11, fontWeight: 800, padding: '2px 7px', borderRadius: 4,
+                            letterSpacing: 0.8, zIndex: 6,
+                          }}>{fQuality}</div>
+                        )}
+                      </AutoplayCard>
+                    )}
 
                   </div>
                 )
@@ -1006,35 +1173,31 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                 if (!fch) return null
                 const tmdb = row.tmdb?.get(fch.name) || liveTmdbData[fch.name]
                 const year = tmdb?.year || ''
-                const overview = tmdb?.overview || ''
+                const overview = tmdb?.overview || 'Descrição não disponível.'
                 const genres = (tmdb as any)?.genres?.slice(0, 2).join(' • ') || ''
-                
-                // Divide overview em 3 linhas (aproximado)
-                const words = (overview || 'Descrição não disponível.').split(' ')
-                const wordsPerLine = Math.ceil(words.length / 3)
-                const line1 = words.slice(0, wordsPerLine).join(' ')
-                const line2 = words.slice(wordsPerLine, wordsPerLine * 2).join(' ')
-                const line3 = words.slice(wordsPerLine * 2).join(' ')
                 
                 return (
                   <div 
                     key={fch.id}
                     style={{
-                      padding: '0 80px 0',
-                      minHeight: '100px',
-                      marginTop: '-10px',
+                      // ALTURA FIXA: nunca empurra a row de baixo
+                      height: 120,
+                      padding: '0 80px',
+                      marginTop: '-50px',
+                      zIndex: 20,
+                      position: 'relative',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
                     }}>
-                    {/* Keyframes movidos para index.css (elimina re-parse a cada render) */}
-                    
-                    {/* Tags minimalistas com cores */}
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                    {/* Tags centralizadas */}
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8, justifyContent: 'center' }}>
                       {genres && genres.split(' • ').map((g: string, i: number) => {
                         const colors = [
-                          { bg: 'rgba(255, 107, 107, 0.15)', border: 'rgba(255, 107, 107, 0.4)', text: '#ff6b6b' }, // vermelho
-                          { bg: 'rgba(255, 179, 217, 0.15)', border: 'rgba(255, 179, 217, 0.4)', text: '#ffb3d9' }, // rosa
-                          { bg: 'rgba(138, 201, 255, 0.15)', border: 'rgba(138, 201, 255, 0.4)', text: '#8ac9ff' }, // azul
-                          { bg: 'rgba(255, 214, 102, 0.15)', border: 'rgba(255, 214, 102, 0.4)', text: '#ffd666' }, // amarelo
-                          { bg: 'rgba(129, 236, 236, 0.15)', border: 'rgba(129, 236, 236, 0.4)', text: '#81ecec' }, // ciano
+                          { bg: 'rgba(255, 255, 255, 0.08)', border: 'rgba(255, 255, 255, 0.2)', text: '#fff' },
+                          { bg: 'rgba(255, 255, 255, 0.08)', border: 'rgba(255, 255, 255, 0.2)', text: '#fff' },
                         ]
                         const color = colors[i % colors.length]
                         return (
@@ -1042,8 +1205,8 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                             background: color.bg,
                             border: `1px solid ${color.border}`,
                             borderRadius: 6,
-                            padding: '4px 12px',
-                            fontSize: 13,
+                            padding: '3px 10px',
+                            fontSize: 12,
                             fontWeight: 600,
                             color: color.text,
                             fontFamily: 'Inter, sans-serif',
@@ -1056,13 +1219,13 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                       })}
                       {year && (
                         <div style={{
-                          background: 'rgba(168, 85, 247, 0.15)',
-                          border: '1px solid rgba(168, 85, 247, 0.4)',
+                          background: 'rgba(255, 255, 255, 0.08)',
+                          border: '1px solid rgba(255, 255, 255, 0.2)',
                           borderRadius: 6,
-                          padding: '4px 12px',
-                          fontSize: 13,
+                          padding: '3px 10px',
+                          fontSize: 12,
                           fontWeight: 600,
-                          color: '#a855f7',
+                          color: '#fff',
                           fontFamily: 'Inter, sans-serif',
                         }}>
                           {year}
@@ -1072,23 +1235,29 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
                     
                     <div style={{
                       fontFamily: 'Inter, sans-serif',
-                      fontSize: 23,
-                      color: '#ffb3d9',
-                      lineHeight: 1.5,
+                      fontSize: 20,
+                      color: 'rgba(255, 255, 255, 0.75)',
+                      lineHeight: 1.4,
                       fontWeight: 300,
-                      maxWidth: '55%',
-                      textShadow: '0 0 20px rgba(255, 179, 217, 0.4)',
+                      maxWidth: '60%',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
                     }}>
-                      <div className="typewriter-line typewriter-line-1">{line1}</div>
-                      <div className="typewriter-line typewriter-line-2">{line2}</div>
-                      <div className="typewriter-line typewriter-line-3">{line3}</div>
+                      {overview}
                     </div>
                   </div>
                 )
               })()}
             </div>
           )})}
+        {/* Espaço morto para o footer de paginação */}
+        <div style={{ height: 400 }} />
+        {/* Fechamento do bloco `rowsWrapRef` manipulado via GPU */}
         </div>
+      </div>
 
       {/* SKELETON SHIMMER LOADING */}
       {isLoadingContent && (
@@ -1096,6 +1265,15 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.92)', zIndex: 80, padding: '120px 80px 0',
         }}>
+          <div style={{
+            width: 42,
+            height: 42,
+            margin: '0 auto 26px',
+            borderRadius: '50%',
+            border: '3px solid rgba(255,255,255,0.2)',
+            borderTopColor: ACCENT,
+            animation: 'spin 800ms linear infinite',
+          }} />
           {[0, 1, 2].map(r => (
             <div key={r} style={{ marginBottom: 48 }}>
               <div style={{
@@ -1162,6 +1340,9 @@ export default function HomeScreen({ groups, onPlay, onBack }: Props) {
               from { opacity: 0; transform: translateY(12px); }
               to   { opacity: 1; transform: translateY(0);    }
             }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
         @keyframes shimmer {
           0%   { background-position:  200% 0; }
           100% { background-position: -200% 0; }

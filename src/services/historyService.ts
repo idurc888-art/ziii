@@ -32,7 +32,11 @@ function saveAll(data: Record<string, HistoryEntry>): void {
     const entries = Object.entries(data)
     if (entries.length > MAX_ENTRIES) {
       entries.sort((a, b) => b[1].lastWatched - a[1].lastWatched)
-      data = Object.fromEntries(entries.slice(0, MAX_ENTRIES))
+      const maxEntries = entries.slice(0, MAX_ENTRIES)
+      data = {}
+      for (const [key, val] of maxEntries) {
+        data[key] = val
+      }
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
   } catch (e) {

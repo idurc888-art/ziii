@@ -10,6 +10,42 @@ App IPTV para Samsung Tizen 4.0+ (TV UN50RU7100GXZD) que carrega playlists M3U, 
 - Shaka Player (HLS/DASH) + AVPlay (fallback .ts)
 - Zustand + Web Worker (fallback thread principal)
 
+## Status Atual (22/04/2026 13:50)
+✅ **DEPLOY FUNCIONANDO**
+- Certificado: `zi01` (Samsung VD, Partner CA, expira 2027/04/22)
+- TV IP: `10.0.0.100:26101`
+- DUID da TV: `00000002094ebbd4`
+- App ID: `2TDndgJZyN.ziiiTV`
+- PC IP: `10.0.0.103` (deve estar configurado no Developer Mode da TV)
+
+## Como Fazer Deploy
+```bash
+bash deploy.sh
+```
+Simples assim. O script faz build + empacota + instala na TV.
+
+## Configuração do Developer Mode na TV
+1. Na TV: Apps → digita `12345` → Developer Mode ON
+2. Host PC IP: `10.0.0.103`
+3. Reinicia a TV
+4. Conecta: `~/tizen-studio/tools/sdb connect 10.0.0.100:26101`
+
+## Certificado (zi01)
+- Localização: `/home/carneiro888/SamsungCertificate/zi01/`
+- Perfil no Tizen Studio: `zi01`
+- Verified by: Samsung VD Author CA + VD DEVELOPER Partner CA Class
+- DUIDs registrados: `RLCKJITTOD2EM` e `00000002094ebbd4`
+- Senha: (salva no Tizen Certificate Manager)
+
+## Informações da TV
+- Modelo: UN50RU7100GXZD
+- IP: `10.0.0.100`
+- DUID: `00000002094ebbd4`
+- Tizen: 5.0 / Chromium 63
+
+## Playlist M3U
+- URL: `http://cdc55.cc/get.php?username=0357028521&password=82740&type=m3u_plus&output=ts`
+
 ## Status Atual (21/04/2026 09:14)
 ✅ **VIDEO PREVIEW NOS CARDS IMPLEMENTADO**
 - Preview de vídeo **dentro do card** (estilo Netflix)
@@ -56,11 +92,15 @@ App IPTV para Samsung Tizen 4.0+ (TV UN50RU7100GXZD) que carrega playlists M3U, 
 - Carrosséis horizontais (Top 10, Continuar, Categorias)
 - Navegação D-pad entre 4 zonas (sidebar, topbar, hero, content)
 
-## Arquivos Importantes
-- `STACK_ATUAL.md` — stack técnica detalhada
-- `REGRAS_ENTERPRISE.md` — regras obrigatórias do projeto
-- `ROADMAP.md` — planejamento de fases
-- `ARQUITETURA.md` — arquitetura enterprise (singleton, idempotência)
+## Documentação Centralizada (`/docs`)
+A documentação completa do projeto foi movida e estruturada na pasta `/docs`:
+- `/docs/arquitetura/CORE_ARCHITECTURE.md` — Visão geral da Stack, Arquitetura Enterprise (Singleton, dbClient), e regras.
+- `/docs/planejamento/ROADMAP.md` — Planejamento atualizado das fases do projeto.
+- `/docs/contexto_e_regras/` — Relatórios do plano Enterprise (regras de negócios, resumos).
+- `/docs/design_e_ui/` — Guias de layout baseados no projeto Telvix.
+- `/docs/dados_e_analises/` — Parsing de TMDB, análises das streams M3U.
+
+## Arquivos Chave (Source)
 - `vite.config.ts` — Vite 4 + plugin-legacy
 - `deploy.sh` — build + package + install na TV
 - `public/config.xml` — manifest Tizen com CSP permissivo

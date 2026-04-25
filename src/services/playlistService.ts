@@ -42,12 +42,32 @@ async function loadRemote(url: string, id: number): Promise<Record<string, Chann
   const text = await res.text()
   const playlist = parseM3U(text)
   
-  const rawChannels: RawChannel[] = playlist.channels.map(item => ({
-    name: item.name ?? '',
-    url: item.url ?? '',
-    logo: item.tvgLogo ?? '',
-    group: item.groupTitle ?? 'Sem categoria'
-  }))
+  const rawChannels: RawChannel[] = []
+  let filmesCount = 0
+  let seriesCount = 0
+
+  for (const item of playlist.channels) {
+    const groupName = item.groupTitle ?? 'Sem categoria'
+    const isFilme = /filme|vod|cine|netflix/i.test(groupName)
+    const isSerie = /s\u00e9rie|serie/i.test(groupName)
+
+    if (isFilme && filmesCount < 25) {
+      rawChannels.push({
+        name: item.name ?? '', url: item.url ?? '',
+        logo: item.tvgLogo ?? '', group: groupName
+      })
+      filmesCount++
+    } else if (isSerie && seriesCount < 25) {
+      rawChannels.push({
+        name: item.name ?? '', url: item.url ?? '',
+        logo: item.tvgLogo ?? '', group: groupName
+      })
+      seriesCount++
+    }
+    
+    // Condição de parada super agressiva para Modo Teste:
+    if (filmesCount >= 25 && seriesCount >= 25) break
+  }
 
   const channels = normalizeStreams(rawChannels)
 

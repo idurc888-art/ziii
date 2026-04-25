@@ -2,6 +2,8 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import { type Channel } from '../../types/channel'
 import { initPlayer, loadStream, destroyPlayer, selectPlayerBackend } from '../../services/playerService'
 import { avplayLoad, avplayStop, isAVPlayAvailable } from '../../services/avplayService'
+import { keyboardMaestro } from '../../services/keyboardManager'
+import { expandManager } from '../../services/expandManager'
 
 const ACCENT      = '#E50914'
 const OSD_TIMEOUT = 4000
@@ -211,16 +213,28 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         setTimeout(() => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) }, 300)
         return () => { inFlightRef.current = false; if (slowTimerRef.current) clearTimeout(slowTimerRef.current) }
       }
-      avplayLoad(
-        streamUrl, 'av-player',
-        () => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) },
-        (msg) => { if (inFlightRef.current) attemptRetry(msg) }
-      )
+
+      // Se a instância já expandida (seamless) for do mesmo canal, ADOTA
+      const isAdopted = expandManager.isSeamlessActive() && expandManager.getChannel()?.id === channel.id
+      if (isAdopted) {
+        if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' })
+      } else {
+        avplayLoad(
+          streamUrl, 'av-player',
+          () => { if (inFlightRef.current) dispatch({ type: 'SET_STATUS', status: 'playing' }) },
+          (msg) => { if (inFlightRef.current) attemptRetry(msg) }
+        )
+      }
+      
       return () => {
         inFlightRef.current = false
         if (retryTimerRef.current) clearTimeout(retryTimerRef.current)
         if (slowTimerRef.current)  clearTimeout(slowTimerRef.current)
-        avplayStop()
+        
+        // Se formos devolver pro card num colapso seamless, NÃO MATE O PLAYER
+        if (!expandManager.isSeamlessActive() || expandManager.getChannel()?.id !== channel.id) {
+          avplayStop()
+        }
       }
     }
 
@@ -338,8 +352,8 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
           return
       }
     }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    keyboardMaestro.subscribe('player', onKey)
+    return () => keyboardMaestro.unsubscribe('player')
   }, [])
 
   const { status, osdVisible, focusZone, ctrlFocus, slowWarning, debugKeys } = state
@@ -381,12 +395,12 @@ export default function PlayerScreen({ channel, onBack, onNextChannel, onPrevCha
         />
       )}
 
-      {/* OSD — visibility em vez de opacity (Tizen colapsa opacity:0) */}
+      {/* OSD */}
       <div style={{
         position: 'absolute', inset: 0, zIndex: 10,
-        pointerEvents: 'none',
-        visibility: osdVisible ? 'visible' : 'hidden',
-        transition: 'visibility 0ms',
+        pointerEvents: osdVisible ? 'auto' : 'none',
+        opacity: osdVisible ? 1 : 0,
+        transition: 'opacity 300ms ease',
       }}>
         {/* TOP BAR */}
         <div style={{

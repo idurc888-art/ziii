@@ -4,3 +4,29 @@ backup/
 *.wgt
 .DS_Store
 .manifest.tmp
+
+# Tizen Studio
+.metadata/
+.sign/
+.tproject
+
+# Kiro
+.kiro/
+
+# Backups e temporários
+*.tar.gz
+*.bak
+*.tmp.*
+
+# Screenshots
+screenshot.png
+screenshots/
+
+# Logs
+*.log
+
+# Archives
+archives/
+
+# Legacy tests
+legacy_tests/

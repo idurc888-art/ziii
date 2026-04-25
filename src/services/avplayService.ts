@@ -12,23 +12,33 @@ export function isAVPlayAvailable(): boolean {
 // ★ objectId: id do <object type="application/avplayer"> no DOM
 //   O AVPlay precisa de um elemento DOM como âncora para renderizar o vídeo.
 //   Sem isso o vídeo vai para fullscreen nativo SEM composição com o HTML.
+let isAVPlayBusy = false
+
 export function avplayLoad(
   url: string,
   _objectId: string,
   onSuccess: () => void,
   onError: (msg: string) => void
 ): void {
+  if (isAVPlayBusy) {
+    console.warn('[AVPlay] Hardware ocupado, abortando open.')
+    onError('busy')
+    return
+  }
+
   if (!isAVPlayAvailable()) {
     console.log('[AVPlay DEV] PC — API nativa indisponível, simulando sucesso.')
     setTimeout(onSuccess, 300)
     return
   }
 
+  isAVPlayBusy = true
   const avplay = (window as any).webapis.avplay
 
   try {
     // 1. Parar qualquer reprodução anterior
-    try { avplay.stop(); avplay.close() } catch { /* ignorar */ }
+    try { avplay.stop() } catch { /* ignorar */ }
+    try { avplay.close() } catch { /* ignorar */ }
 
     // 2. NONE → IDLE
     avplay.open(url)
@@ -58,7 +68,11 @@ export function avplayLoad(
       onstreamcompleted:   () => console.log('[AVPlay] stream ended'),
       oncurrentplaytime:   (ms: number) => { if (DEBUG) console.log(`[AVPlay] ${ms}ms`) },
       onevent:             (type: string, data: string) => console.log(`[AVPlay] event: ${type} ${data}`),
-      onerror:             (errMsg: string) => { console.error('[AVPlay] erro:', errMsg); onError(errMsg) },
+      onerror:             (errMsg: string) => { 
+        console.error('[AVPlay] erro:', errMsg); 
+        isAVPlayBusy = false;
+        onError(errMsg) 
+      },
     })
 
     // 6. IDLE → READY (assíncrono)
@@ -82,6 +96,7 @@ export function avplayLoad(
   } catch (e: any) {
     const msg = e?.message ?? String(e)
     console.error('[AVPlay] exceção:', msg)
+    isAVPlayBusy = false
     onError(msg)
   }
 }
@@ -94,4 +109,5 @@ export function avplayStop(): void {
     avplay.close()
     console.log('[AVPlay] stopped & closed')
   } catch { /* ignorar */ }
+  isAVPlayBusy = false
 }

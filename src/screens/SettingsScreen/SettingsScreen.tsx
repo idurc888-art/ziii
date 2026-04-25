@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { keyboardMaestro } from '../../services/keyboardManager'
 import { useChannelsStore } from '../../store/channelsStore'
 
 const URL_KEY = 'ziiiTV-m3u-url'
@@ -58,8 +59,8 @@ export default function SettingsScreen({ onBack }: Props) {
         handleSave()
       }
     }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    keyboardMaestro.subscribe('main:settings', onKey)
+    return () => keyboardMaestro.unsubscribe('main:settings')
   }, [])
 
   const isLoading = status !== 'idle' && status !== 'ready' && status !== 'error'

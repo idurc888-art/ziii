@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { keyboardMaestro } from '../services/keyboardManager'
 
 interface LogEntry {
   time: string
@@ -10,9 +11,19 @@ interface LogEntry {
 const MAX_LOGS = 150
 const BATCH_INTERVAL = 100 // ms
 
+// Store singleton para controlar o DebugOverlay de fora
+let _setOpen: ((v: boolean | ((prev: boolean) => boolean)) => void) | null = null
+export const debugStore = {
+  toggle: () => _setOpen?.(v => !v),
+  open:   () => _setOpen?.(true),
+  close:  () => _setOpen?.(false),
+}
+
 export default function DebugOverlay() {
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const [isOpen, setIsOpen] = useState(false) // fechado por padrão
+  const [isOpen, setIsOpen] = useState(false)
+  // Registra o setter no store singleton
+  useEffect(() => { _setOpen = setIsOpen; return () => { _setOpen = null } }, [])
   const logsRef = useRef<LogEntry[]>([])
   const batchRef = useRef<LogEntry[]>([])
   const timerRef = useRef<any>(undefined)
@@ -81,8 +92,8 @@ export default function DebugOverlay() {
 
     // Teclas de controle
     const onKey = (e: KeyboardEvent) => {
-      // F1, botão vermelho (403), ou TOOLS (10135) = toggle
-      if (e.key === 'F1' || e.keyCode === 403 || e.keyCode === 10135) {
+      // F1, botão vermelho (403 ou 'ColorF0Red'), ou TOOLS (10135) = toggle
+      if (e.key === 'F1' || e.keyCode === 403 || e.key === 'ColorF0Red' || e.keyCode === 10135) {
         e.preventDefault()
         setIsOpen((v: boolean) => !v)
       }
@@ -94,41 +105,36 @@ export default function DebugOverlay() {
         setLogs([])
       }
     }
-    document.addEventListener('keydown', onKey)
+    keyboardMaestro.subscribe('global:debug', onKey)
 
     return () => {
       console.log = originalLog
       console.warn = originalWarn
       console.error = originalError
-      document.removeEventListener('keydown', onKey)
+      keyboardMaestro.unsubscribe('global:debug')
       if (timerRef.current) clearTimeout(timerRef.current)
     }
   }, [])
 
-  // Botão retraído (lateral direita)
+  // Se estiver fechado, mostra só a bolinha verde no lado direito
   if (!isOpen) {
     return (
-      <div style={{
-        position: 'fixed',
-        top: '50%',
-        right: 0,
-        transform: 'translateY(-50%)',
-        background: 'rgba(0,0,0,0.8)',
-        color: '#0f0',
-        padding: '20px 8px',
-        fontSize: '14px',
-        zIndex: 9999,
-        cursor: 'pointer',
-        borderTopLeftRadius: '8px',
-        borderBottomLeftRadius: '8px',
-        writingMode: 'vertical-rl',
-        textOrientation: 'mixed',
-        fontWeight: 'bold',
-        border: '2px solid #0f0',
-        borderRight: 'none'
-      }} onClick={() => setIsOpen(true)}>
-        DEBUG LOGS ({logs.length})
-      </div>
+      <div
+        onClick={() => setIsOpen(true)}
+        style={{
+          position: 'fixed',
+          top: '50%',
+          right: 0,
+          transform: 'translateY(-50%)',
+          width: 18,
+          height: 48,
+          background: '#0f0',
+          borderRadius: '8px 0 0 8px',
+          zIndex: 9999,
+          cursor: 'pointer',
+          boxShadow: '0 0 12px rgba(0,255,0,0.6)',
+        }}
+      />
     )
   }
 

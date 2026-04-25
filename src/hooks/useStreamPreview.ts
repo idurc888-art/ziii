@@ -5,18 +5,24 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Channel } from '../types/channel'
 
+interface DisplayRect { x: number; y: number; w: number; h: number }
+
 interface PreviewOptions {
   idleDelay?: number
   previewDuration?: number
   seekToMs?: number
   fadeDuration?: number
   onStopped?: (currentTimeMs: number) => void  // chamado quando preview para (para salvar offset)
+  playerIdPrefix?: string // prefixo para os IDs (ex: 'carousel-player')
+  /** Rect em coordenadas de tela (px) onde o hardware player deve renderizar.
+   *  Default: fullscreen (comportamento do HeroBanner).
+   *  Para o HeroCarousel passe as coordenadas exatas do card ativo. */
+  displayRect?: DisplayRect
 }
 
 export type PreviewState = 'idle' | 'loading' | 'playing' | 'error'
 
-// IDs dos dois elementos <object> AVPlay no DOM
-const PLAYER_IDS = ['av-hero-player-a', 'av-hero-player-b']
+let isAVPlayBusy = false
 
 function pickPreviewUrl(ch: Channel): string {
   const sd = ch.streams?.find(s => 
@@ -43,7 +49,20 @@ export function useStreamPreview(
     previewDuration = 0, // 0 = infinito
     seekToMs        = 270000,
     fadeDuration    = 350,
+    playerIdPrefix  = 'av-hero-player',
+    displayRect,
   } = opts
+
+  // Rect final: usa o customizado ou full-screen como fallback (HeroBanner)
+  const getRealRect = (): DisplayRect =>
+    displayRect ?? {
+      x: 0,
+      y: 0,
+      w: typeof window !== 'undefined' ? window.screen.width : 1920,
+      h: typeof window !== 'undefined' ? window.screen.height : 1080,
+    }
+
+  const PLAYER_IDS = [`${playerIdPrefix}-a`, `${playerIdPrefix}-b`]
 
   const [state, setState]           = useState<PreviewState>('idle')
   const [isVideoVisible, setIsVideoVisible] = useState(false)
@@ -65,19 +84,23 @@ export function useStreamPreview(
     try { players.current[slot]?.stop?.() } catch {}
     try { players.current[slot]?.close?.() } catch {}
     players.current[slot] = null
+    isAVPlayBusy = false
   }
 
   // ─── Pré-carrega canal em background no slot inativo ──
   const prefetch = (ch: Channel) => {
     const avplay = getAvplay()
-    if (!avplay || buffered.current.has(ch.id)) return
+    if (!avplay || buffered.current.has(ch.id) || isAVPlayBusy) return
     const inactiveSlot = slotRef.current === 0 ? 1 : 0
     closeSlot(inactiveSlot)
 
     const url = pickPreviewUrl(ch)
     if (!url) return
+    
+    isAVPlayBusy = true
     try {
       avplay.open(url)
+      try { avplay.setDisplayMethod('PLAYER_EXTERNAL_OUTPUT_MODE_NONE') } catch (_) {}
       avplay.setDisplayRect(0, 0, 1, 1) // invisível
 
       avplay.setListener({
@@ -87,26 +110,35 @@ export function useStreamPreview(
             try { avplay.seekTo(seekToMs) } catch {}
           }
           try { avplay.pause() } catch {}
+          isAVPlayBusy = false
         },
-        onerror: () => { closeSlot(inactiveSlot) }
+        onerror: () => { 
+          closeSlot(inactiveSlot)
+          isAVPlayBusy = false
+        }
       })
 
       avplay.prepareAsync(() => {
         try {
           avplay.play()
           players.current[inactiveSlot] = avplay
-        } catch {}
+        } catch {
+          isAVPlayBusy = false
+        }
       }, () => {
         closeSlot(inactiveSlot)
+        isAVPlayBusy = false
       })
-    } catch {}
+    } catch (e) {
+      isAVPlayBusy = false
+    }
   }
 
-  // ─── Cleanup geral ────────────────────────────────
+  // ─── Parar tudo e zerar estado ────────────────────
   const cleanup = (saveOffset = true) => {
     clearTimeout(idleTimer.current)
     clearTimeout(previewTimer.current)
-    // Salvar offset antes de parar (se callback configurado)
+    
     if (saveOffset && optsRef.current.onStopped) {
       const avplay = getAvplay()
       if (avplay) {
@@ -122,6 +154,7 @@ export function useStreamPreview(
     closeSlot(1)
     buffered.current.clear()
     activeIdRef.current = ''
+    isAVPlayBusy = false
   }
 
   // ─── Iniciar preview do canal atual ───────────────
@@ -132,10 +165,14 @@ export function useStreamPreview(
     setState('loading')
 
     if (!avplay) {
-      // Dev local — simula
       setState('playing')
       setIsVideoVisible(true)
       previewTimer.current = setTimeout(cleanup, previewDuration)
+      return
+    }
+
+    if (isAVPlayBusy) {
+      setState('error')
       return
     }
 
@@ -147,15 +184,14 @@ export function useStreamPreview(
       if (!alreadyBuffered && isVOD(ch)) {
         try { avplay.seekTo(seekToMs) } catch {}
       }
-      avplay.setDisplayRect(0, 0, window.screen.width, window.screen.height)
+      const r = getRealRect()
+      avplay.setDisplayRect(r.x, r.y, r.w, r.h)
       setIsVideoVisible(true)
       setState('playing')
 
-      // Apenas seta timeout se for configurado (maior que zero)
       if (previewDuration > 0) {
         previewTimer.current = setTimeout(() => {
           if (activeIdRef.current !== channelId) return
-          // Salvar offset antes de parar
           if (optsRef.current.onStopped) {
             const av = getAvplay()
             if (av) {
@@ -166,15 +202,15 @@ export function useStreamPreview(
             }
           }
           setIsVideoVisible(false)
-          setTimeout(() => cleanup(false), fadeDuration) // false = já salvamos acima
+          setTimeout(() => cleanup(false), fadeDuration)
         }, previewDuration)
       }
     }
 
     if (alreadyBuffered && players.current[slot]) {
-      // Swap instantâneo — já estava em buffer
       try {
-        avplay.setDisplayRect(0, 0, window.screen.width, window.screen.height)
+        const r = getRealRect()
+        avplay.setDisplayRect(r.x, r.y, r.w, r.h)
         avplay.resume()
       } catch {}
       onReady()
@@ -185,13 +221,20 @@ export function useStreamPreview(
         setState('error')
         return
       }
+      
+      isAVPlayBusy = true
       try {
         avplay.open(url)
-        avplay.setDisplayRect(0, 0, window.screen.width, window.screen.height)
+        try { avplay.setDisplayMethod('PLAYER_EXTERNAL_OUTPUT_MODE_NONE') } catch (_) {}
+        const r = getRealRect()
+        avplay.setDisplayRect(r.x, r.y, r.w, r.h)
         
         avplay.setListener({
           onbufferingcomplete: onReady,
-          onerror: () => { if (activeIdRef.current === channelId) setState('error') }
+          onerror: () => { 
+            if (activeIdRef.current === channelId) setState('error')
+            isAVPlayBusy = false
+          }
         })
 
         avplay.prepareAsync(() => {
@@ -199,26 +242,25 @@ export function useStreamPreview(
             avplay.play()
             players.current[slot] = avplay
           } catch (e) {
-            console.warn('[StreamPreview play]', e)
             setState('error')
+            isAVPlayBusy = false
           }
         }, () => {
           setState('error')
+          isAVPlayBusy = false
         })
       } catch (e) {
-        console.warn('[StreamPreview open]', e)
         setState('error')
+        isAVPlayBusy = false
       }
     }
   }
 
-  // ─── Efeito: canal atual mudou ────────────────────
   useEffect(() => {
     clearTimeout(idleTimer.current)
     clearTimeout(previewTimer.current)
     setIsVideoVisible(false)
 
-    // Fecha apenas o slot ativo (mantém o prefetch do inativo)
     closeSlot(slotRef.current)
     setState('idle')
     activeIdRef.current = ''
@@ -232,15 +274,12 @@ export function useStreamPreview(
     }
   }, [channel?.id, isVisible])
 
-  // ─── Efeito: pré-carrega próximo slide ────────────
   useEffect(() => {
     if (!nextChannel || !isVisible) return
-    // Só prefetch depois que o atual já começou a tocar
     const t = setTimeout(() => prefetch(nextChannel), 3000)
     return () => clearTimeout(t)
   }, [nextChannel?.id, isVisible])
 
-  // ─── Cleanup ao desmontar ─────────────────────────
   useEffect(() => () => cleanup(), [])
 
   return {
@@ -248,14 +287,14 @@ export function useStreamPreview(
     isVideoVisible,
     activePlayerId: PLAYER_IDS[activeSlot],
     isPlaying: state === 'playing',
-    isLoading: state === 'loading',
     videoStyle: {
       opacity: isVideoVisible ? 1 : 0,
-      transition: `opacity ${fadeDuration}ms ease-in-out`,
+      transition: `opacity ${fadeDuration}ms ease-out`,
+      pointerEvents: 'none' as const
     },
     backdropStyle: {
       opacity: isVideoVisible ? 0 : 1,
-      transition: `opacity ${fadeDuration}ms ease-in-out`,
-    },
+      transition: `opacity ${fadeDuration}ms ease-in-out`
+    }
   }
 }
